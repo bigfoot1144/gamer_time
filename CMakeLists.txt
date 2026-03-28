@@ -28,7 +28,6 @@ set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
 add_subdirectory(external/llama.cpp)
 
-# Automatically pick up all .cpp files under src/
 file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
@@ -60,15 +59,16 @@ else()
     target_compile_options(game PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-set(DEFAULT_MODEL_PATH "/home/bigfoot/dev/game_idea/model/Qwen3-VL-4B-Instruct-Q4_K_M.gguf")
+set(DEFAULT_MODEL_PATH "../model/Qwen3-VL-4B-Instruct-Q4_K_M.gguf")
 set(SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
 
-# Optional shader compilation if glslangValidator is installed
 find_program(GLSLANG_VALIDATOR glslangValidator)
 
 set(SHADER_SOURCES
     "${SHADER_DIR}/triangle.vert"
     "${SHADER_DIR}/triangle.frag"
+    "${SHADER_DIR}/text.vert"
+    "${SHADER_DIR}/text.frag"
 )
 
 set(SPIRV_OUTPUTS "")

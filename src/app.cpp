@@ -35,6 +35,7 @@ int App::run() {
             submitted_demo_prompt_ = true;
         }
 
+        renderer_.set_overlay_text(build_overlay_text());
         renderer_.draw_frame();
         update_window_title();
     }
@@ -114,6 +115,37 @@ void App::update_window_title() {
     }
 
     SDL_SetWindowTitle(window_, title.c_str());
+}
+
+std::string App::build_overlay_text() const {
+    std::string overlay = "LLAMA + VULKAN HUD\n";
+    overlay += "ESC quit | SPACE rerun prompt\n\n";
+
+    if (model_path_.empty()) {
+        overlay += "No model path provided. Pass the GGUF path on the command line to enable NPC chat text.\n";
+        return overlay;
+    }
+
+    overlay += "Worker: ";
+    const std::string status = llama_worker_.last_status();
+    overlay += status.empty() ? std::string("idle") : status;
+    overlay += "\n\n";
+
+    const std::string result = llama_worker_.last_result();
+    if (!result.empty()) {
+        overlay += result;
+        return overlay;
+    }
+
+    if (llama_worker_.is_loading()) {
+        overlay += "Loading model...\n";
+    } else if (submitted_demo_prompt_) {
+        overlay += "Waiting for the sample prompt output...\n";
+    } else {
+        overlay += "Waiting for llama.cpp to become ready...\n";
+    }
+
+    return overlay;
 }
 
 void App::cleanup() {

@@ -19,6 +19,7 @@ private:
     void init();
     void handle_event(const SDL_Event & event, bool & running);
     void update_window_title();
+    std::string build_overlay_text() const;
     void cleanup();
 
     SDL_Window * window_ = nullptr;
