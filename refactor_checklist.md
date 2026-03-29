@@ -1,278 +1,231 @@
-# Refactor Checklist
+# Next Agent Handoff
 
-This checklist turns the architecture in `../diagram.md` into an implementation sequence for `gamer_time`.
+Current state of the codebase:
 
-## Phase 1: Runtime Skeleton
+- The old `VulkanRenderer` has been fully deleted.
+- `SceneRenderer` now owns the full frame lifecycle in `src/render/scene_renderer.h` and `src/render/scene_renderer.cpp`.
+- `gpu::VulkanContext` owns instance/surface/device/queues.
+- `gpu::SwapchainManager` owns swapchain/images/views/framebuffers.
+- `gpu::GpuResources` owns persistent GPU resources including:
+  static quad buffers
+  instance buffer
+  fog texture
+- `TextOverlayRenderer` owns the text overlay Vulkan path and is compiled as part of `gt_gpu`.
+- The scene path already renders instanced quads using:
+  `RenderBatch`
+  `GpuResources`
+  scene descriptors
+  fog texture
+- The current scene shader is still temporary:
+  it uses generated colors from `sprite_index`
+  it does not sample a real atlas yet
+- True AI token streaming is already implemented:
+  `LlamaWorker` emits `status:`, `token:`, `completed:`, and `error:` events directly
+  `LlamaController` is event-driven and no longer depends on polling `last_status()` / `last_result()`
+- The user manually verified runtime behavior after the refactor:
+  window opens
+  rendering works
+  quit works
+  resize works
+  pan works
+  zoom works
 
-Goal: replace the current monolithic app shell with a coordinator that owns subsystem lifetime only.
+Important architectural intent:
 
-- [x] Create `src/app/application.h`
-- [x] Create `src/app/application.cpp`
-- [x] Create `src/app/runtime_config.h`
-- [x] Update `src/main.cpp` to build a `RuntimeConfig` and construct `Application`
-- [x] Move current startup and shutdown flow out of `App` into `Application`
-- [x] Define `Application::initialize()`
-- [x] Define `Application::shutdown()`
-- [x] Define `Application::tick_frame()`
-- [x] Keep Vulkan calls out of `Application`
-- [x] Keep SDL event parsing out of `Application`
-- [ ] Preserve current behavior: open window, render frame, clean shutdown
+- The user wants a tile-based system next.
+- The user explicitly wants atlas work deferred until after the refactor/cleanup, and that cleanup is now done.
+- The next major milestone is adding a tile-based terrain layer backed by an atlas.
+- Do not reintroduce `VulkanRenderer`.
+- Keep the current ownership split:
+  `gpu/` owns Vulkan context, swapchain, and persistent GPU resources
+  `render/` owns frame orchestration and scene/text rendering policy
 
-Exit criteria:
+Recommended starting point for the next agent:
 
-- [x] Program still builds
-- [ ] Program still opens a window
-- [ ] Program still renders the current output
-- [x] `Application` coordinates subsystems instead of doing their work directly
+1. Start with Phase 1 and Phase 2 in this checklist.
+2. Add:
+   `src/assets/atlas_asset.h/.cpp`
+   `src/assets/image_loader.h/.cpp`
+   `src/game/tile_map.h/.cpp`
+3. Add tile map ownership to `World`.
+4. Seed a simple test terrain map before touching atlas sampling in shaders.
+5. After that, extend `RenderWorld`, `RenderExtractor`, and `BatchBuilder` to emit terrain batches.
 
-## Phase 2: Platform And Input Boundary
+Files the next agent should inspect first:
 
-Goal: isolate SDL, normalized input state, and camera handling.
+- `src/render/scene_renderer.h`
+- `src/render/scene_renderer.cpp`
+- `src/gpu/gpu_resources.h`
+- `src/gpu/gpu_resources.cpp`
+- `src/render/render_world.h`
+- `src/render/render_extractor.cpp`
+- `src/render/batch_builder.cpp`
+- `src/game/world.h`
+- `src/game/world.cpp`
+- `shaders/triangle.vert`
+- `shaders/triangle.frag`
 
-- [x] Create `src/platform/sdl_platform.h`
-- [x] Create `src/platform/sdl_platform.cpp`
-- [x] Create `src/platform/input_state.h`
-- [x] Create `src/platform/camera_controller.h`
-- [x] Create `src/platform/camera_controller.cpp`
-- [x] Move SDL init and quit into `SdlPlatform`
-- [x] Move window creation and destruction into `SdlPlatform`
-- [x] Move SDL event polling into `SdlPlatform::poll_input()`
-- [x] Define `InputState` with quit, resize, keyboard, mouse, and wheel fields
-- [x] Convert raw `SDL_Event` values into `InputState`
-- [x] Add `CameraState`
-- [x] Add `CameraController::update(const InputState&, float dt)`
-- [x] Wire resize events so the renderer still gets resize requests
-- [x] Replace direct event handling in old `App` flow with `InputState`
+# Tile Atlas Implementation Checklist
 
-Exit criteria:
+This checklist replaces the completed refactor roadmap. It tracks the next concrete milestone: add a tile-based terrain system backed by a texture atlas, while keeping the current renderer architecture intact.
 
-- [x] `Application` sees `InputState`, not raw SDL events
-- [ ] Quit still works
-- [ ] Resize still works
-- [ ] Simple zoom works
-- [ ] Simple pan works
+## Phase 1: Asset Metadata And Image Loading
 
-## Phase 3: Game-State Framework
+Goal: define atlas metadata and load atlas image pixels on CPU.
 
-Goal: create the gameplay-side data model and update order implied by the diagram.
-
-- [x] Create `src/game/world.h`
-- [x] Create `src/game/world.cpp`
-- [x] Create `src/game/components.h`
-- [x] Create `src/game/command_queue.h`
-- [x] Create `src/game/command_queue.cpp`
-- [x] Create `src/game/selection_system.h`
-- [x] Create `src/game/selection_system.cpp`
-- [x] Create `src/game/navigation_system.h`
-- [x] Create `src/game/navigation_system.cpp`
-- [x] Create `src/game/fog_of_war_system.h`
-- [x] Create `src/game/fog_of_war_system.cpp`
-- [x] Define `UnitId`
-- [x] Define `TransformComponent`
-- [x] Define `RenderComponent`
-- [x] Define `VisionComponent`
-- [x] Define `UnitComponent`
-- [x] Define `MoveCommand`
-- [x] Implement a `World` that owns units and component storage
-- [x] Add a selected-unit collection to `World`
-- [x] Add a command queue to `World`
-- [x] Add CPU fog-of-war storage to `World`
-- [x] Seed the world with a small set of test units
-- [x] Implement `SelectionSystem`
-- [x] Implement `CommandQueue` processing
-- [x] Implement `NavigationSystem` with a simple placeholder movement/pathing step
-- [x] Implement `FogOfWarSystem` to update visibility from unit positions
-- [x] Establish main-thread update order:
-- [x] `SelectionSystem`
-- [x] `CommandQueue`
-- [x] `NavigationSystem`
-- [x] `FogOfWarSystem`
+- [ ] Create `src/assets/atlas_asset.h`
+- [ ] Create `src/assets/atlas_asset.cpp`
+- [ ] Create `src/assets/image_loader.h`
+- [ ] Create `src/assets/image_loader.cpp`
+- [ ] Define an `AtlasAsset` type with image path, tile size, columns, and rows
+- [ ] Add optional tile id/name mapping support
+- [ ] Define a `LoadedImage` type with width, height, and RGBA pixel storage
+- [ ] Load a PNG atlas image into CPU memory
+- [ ] Keep asset loading isolated from SDL and Vulkan objects
 
 Exit criteria:
 
-- [x] A real `World` exists
-- [x] Units can be selected
-- [x] Move commands can be issued
-- [x] Units can move in a basic way
-- [x] Fog-of-war data exists in CPU memory
+- [ ] Atlas metadata can be loaded or constructed cleanly
+- [ ] Atlas pixels can be loaded into CPU memory
+- [ ] Tile dimensions and atlas grid dimensions are available at runtime
 
-## Phase 4: Renderer Decomposition
+## Phase 2: Tile Map Data Model
 
-Goal: split the monolithic Vulkan renderer by ownership boundary without losing current output.
+Goal: add gameplay-side ownership for a tile terrain layer.
 
-- [x] Create `src/gpu/vulkan_context.h`
-- [x] Create `src/gpu/vulkan_context.cpp`
-- [x] Create `src/gpu/swapchain_manager.h`
-- [x] Create `src/gpu/swapchain_manager.cpp`
-- [x] Create `src/gpu/gpu_resources.h`
-- [x] Create `src/gpu/gpu_resources.cpp`
-- [x] Create `src/render/scene_renderer.h`
-- [x] Create `src/render/scene_renderer.cpp`
-- [x] Create `src/render/text_overlay_renderer.h`
-- [x] Create `src/render/text_overlay_renderer.cpp`
-- [ ] Move Vulkan instance creation into `VulkanContext`
-- [ ] Move surface creation into `VulkanContext`
-- [ ] Move physical/logical device creation into `VulkanContext`
-- [ ] Move queue discovery into `VulkanContext`
-- [ ] Extend queue discovery to support optional compute queue family
-- [ ] Move swapchain creation and recreation into `SwapchainManager`
-- [ ] Move image views and framebuffers into `SwapchainManager`
-- [ ] Move persistent GPU assets into `GpuResources`
-- [ ] Move pipeline and command recording logic into `SceneRenderer`
-- [ ] Move temporary text rendering path into `TextOverlayRenderer`
-- [ ] Keep the old output visually working during the split
+- [ ] Create `src/game/tile_map.h`
+- [ ] Create `src/game/tile_map.cpp`
+- [ ] Define `TileCell`
+- [ ] Define `TileMap`
+- [ ] Add width/height storage
+- [ ] Add tile size storage
+- [ ] Add per-cell atlas index storage
+- [ ] Add safe tile lookup helpers
+- [ ] Add `TileMap` ownership to `World`
+- [ ] Seed the world with a small test terrain map
 
 Exit criteria:
 
-- [ ] No single class owns all Vulkan handles
-- [ ] Old output still renders
-- [ ] Resize and swapchain recreation still work
-- [ ] API exposes graphics, present, and optional compute queues
+- [ ] `World` owns a terrain map
+- [ ] Terrain tiles can be authored as atlas indices
+- [ ] A test map exists at runtime
 
-## Phase 5: Render Pipeline Stages
+## Phase 3: Render Extraction For Terrain
 
-Goal: make the main-thread render prep match the staged pipeline in the diagram.
+Goal: extract tile terrain into render-side data alongside units.
 
-- [x] Create `src/render/render_world.h`
-- [x] Create `src/render/render_extractor.h`
-- [x] Create `src/render/render_extractor.cpp`
-- [x] Create `src/render/frustum_culler.h`
-- [x] Create `src/render/frustum_culler.cpp`
-- [x] Create `src/render/projection_system.h`
-- [x] Create `src/render/projection_system.cpp`
-- [x] Create `src/render/depth_sorter.h`
-- [x] Create `src/render/depth_sorter.cpp`
-- [x] Create `src/render/batch_builder.h`
-- [x] Create `src/render/batch_builder.cpp`
-- [x] Define `RenderUnit`
-- [x] Define `RenderWorld`
-- [x] Define `ProjectedUnit`
-- [x] Define `InstanceData`
-- [x] Implement `RenderExtractor::build(world, camera, ai_events)`
-- [x] Implement `FrustumCuller`
-- [x] Implement orthographic projection in `ProjectionSystem`
-- [x] Implement bottom-anchor depth keys in `DepthSorter`
-- [x] Implement instance generation in `BatchBuilder`
-- [x] Route overlay text through `RenderWorld`
-- [x] Stop letting the renderer read gameplay state directly
+- [ ] Extend `src/render/render_world.h` with terrain render data
+- [ ] Define `RenderTile`
+- [ ] Update `src/render/render_extractor.cpp` to emit terrain tiles
+- [ ] Compute tile world positions from map coordinates and tile size
+- [ ] Preserve existing unit extraction
+- [ ] Keep terrain extraction separate from gameplay mutation
 
 Exit criteria:
 
-- [x] Renderer consumes `RenderWorld` or a built batch, not `World`
-- [x] Culling is a distinct stage
-- [x] Projection is a distinct stage
-- [x] Y-sort is a distinct stage
-- [x] Batch building is a distinct stage
+- [ ] `RenderWorld` contains terrain tiles
+- [ ] Terrain tile positions are expressed in world space
+- [ ] Unit extraction still works
 
-## Phase 6: GPU Resource Model
+## Phase 4: Terrain Batch Building
 
-Goal: mirror the diagram's VRAM layout with explicit persistent and dynamic resources.
+Goal: turn extracted terrain and units into explicit instance batches.
 
-- [x] Create `src/gpu/buffer_utils.h`
-- [x] Create `src/gpu/buffer_utils.cpp`
-- [x] Create `src/gpu/texture_utils.h`
-- [x] Create `src/gpu/texture_utils.cpp`
-- [x] Add a static quad vertex buffer to `GpuResources`
-- [x] Add a static quad index buffer to `GpuResources`
-- [x] Add texture atlas image/view/sampler to `GpuResources`
-- [x] Add dynamic instance storage buffer to `GpuResources`
-- [x] Add fog-of-war texture to `GpuResources`
-- [x] Add staging/upload helpers to `GpuResources`
-- [x] Implement instance buffer uploads from `BatchBuilder` output
-- [x] Implement fog mask uploads from `World` CPU data
-- [ ] Update descriptors and shaders as needed for instance and fog data
-- [x] Keep allocator ownership contained to `gpu/` even if not using VMA yet
+- [ ] Extend `RenderBatch` for terrain data
+- [ ] Decide whether terrain and units share `InstanceData` or use separate structs
+- [ ] Update `src/render/batch_builder.cpp` to emit terrain instances
+- [ ] Keep terrain instances in a separate batch or range from units
+- [ ] Preserve unit batching and unit selection flags
 
 Exit criteria:
 
-- [ ] Unit rendering uses instance data as the primary scene path
-- [ ] Fog-of-war has a real GPU texture
-- [x] Persistent GPU resources are owned in one place
-- [x] Upload logic is separate from scene extraction
+- [ ] Terrain instances are built explicitly
+- [ ] Unit instances are still built explicitly
+- [ ] Render batches contain enough information for separate terrain and unit draws
 
-## Phase 7: AI Controller And Event Channel
+## Phase 5: GPU Atlas Resource
 
-Goal: replace string polling with a real controller and event stream.
+Goal: upload a scene atlas into VRAM and expose it through `GpuResources`.
 
-- [x] Create `src/ai/llama_controller.h`
-- [x] Create `src/ai/llama_controller.cpp`
-- [x] Create `src/ai/token_stream.h`
-- [x] Create `src/ai/token_stream.cpp`
-- [x] Define `AiEventType`
-- [x] Define `AiEvent`
-- [x] Implement thread-safe event queueing from worker to main thread
-- [x] Implement `LlamaController::start()`
-- [x] Implement `LlamaController::shutdown()`
-- [x] Implement `LlamaController::submit_prompt()`
-- [x] Implement `LlamaController::drain_events()`
-- [x] Port worker-thread logic from `LlamaWorker` into `LlamaController`
-- [ ] Stream partial token output as `AiEventType::Token`
-- [x] Stream status updates as `AiEventType::Status`
-- [x] Stream completion and error events
-- [x] Remove correctness dependence on `last_result()` and `last_status()`
-- [x] Keep AI code isolated from SDL and Vulkan object access
+- [ ] Extend `src/gpu/gpu_resources.h` with a scene atlas texture
+- [ ] Extend `src/gpu/gpu_resources.cpp` with scene atlas upload logic
+- [ ] Add a `scene_atlas_texture()` accessor
+- [ ] Add a `upload_scene_atlas(...)` or `initialize_scene_atlas(...)` path
+- [ ] Create atlas image, image view, and sampler in GPU memory
+- [ ] Keep atlas upload separate from fog upload
 
 Exit criteria:
 
-- [x] Main thread drains AI events once per frame
-- [ ] Partial token streaming works
-- [x] AI status updates work
-- [x] Renderer no longer depends on shared mutable string state from the worker
+- [ ] A real scene atlas texture exists in `GpuResources`
+- [ ] Atlas image/view/sampler are available to the renderer
+- [ ] Fog texture path still works
 
-## Phase 8: Diagram Convergence
+## Phase 6: Scene Shader Atlas Sampling
 
-Goal: wire the full runtime so each box in `diagram.md` has a concrete code owner.
+Goal: replace temporary generated unit colors with real atlas sampling.
 
-- [x] Finalize per-frame order in `Application`
-- [x] Poll input through `SdlPlatform`
-- [x] Update selection
-- [x] Update command queue
-- [x] Update navigation
-- [x] Update fog of war
-- [x] Drain AI events
-- [x] Build `RenderWorld`
-- [x] Run frustum culling
-- [x] Run orthographic projection
-- [x] Run y-sort
-- [x] Build instance batches
-- [x] Upload instance data
-- [x] Upload fog mask
-- [x] Record and submit graphics work
-- [ ] Route AI token output into overlay text or unit barks
-- [x] Remove the old `App` class
-- [ ] Remove or reduce the old monolithic `VulkanRenderer`
-- [x] Update `CMakeLists.txt` to stop relying on broad source globbing once layout stabilizes
-- [x] Add subsystem targets:
-- [x] `gt_core`
-- [x] `gt_platform`
-- [x] `gt_game`
-- [x] `gt_render`
-- [x] `gt_gpu`
-- [x] `gt_ai`
+- [ ] Update `shaders/triangle.vert`
+- [ ] Update `shaders/triangle.frag`
+- [ ] Bind atlas texture in the scene descriptor set
+- [ ] Keep fog texture in the scene descriptor set
+- [ ] Pass atlas layout information to shaders
+- [ ] Compute atlas UVs from tile or sprite index
+- [ ] Sample the atlas texture in the fragment shader
+- [ ] Preserve fog modulation
 
 Exit criteria:
 
-- [ ] The runtime structure follows the diagram closely
-- [x] Main thread owns SDL, simulation, visibility, render extraction, and frame submission
-- [ ] Worker thread owns inference only
-- [ ] Renderer consumes extracted frame data, not game state
-- [ ] GPU module owns Vulkan handles and persistent VRAM resources
+- [ ] Scene color comes from the atlas, not generated fallback colors
+- [ ] Fog modulation still works
+- [ ] Tile and/or unit indices map to atlas UVs correctly
 
-## Recommended Commit Boundaries
+## Phase 7: Terrain Rendering Path
 
-- [ ] Commit Phase 1 after the app shell compiles and behavior is unchanged
-- [ ] Commit Phase 2 after SDL and camera are isolated
-- [ ] Commit Phase 3 after a basic world, selection, movement, and CPU fog exist
-- [ ] Commit Phase 4 after Vulkan ownership is split but output is preserved
-- [ ] Commit Phase 5 after render extraction and batch building are explicit
-- [ ] Commit Phase 6 after instance and fog uploads are live
-- [ ] Commit Phase 7 after AI events stream through the controller
-- [ ] Commit Phase 8 after cleanup and target layout stabilization
+Goal: draw the terrain layer from batches before units.
 
-## Guardrails
+- [ ] Update `src/render/scene_renderer.cpp` to bind atlas and fog descriptors
+- [ ] Add terrain draw call(s)
+- [ ] Keep unit draw call(s) after terrain draw call(s)
+- [ ] Preserve text overlay draw after scene rendering
+- [ ] Ensure tile quads use correct world size and placement
 
-- [ ] Do not build a generic ECS before the data model proves it is needed
-- [ ] Do not let render code read mutable gameplay state directly
-- [ ] Do not let AI code touch SDL or live Vulkan objects
-- [ ] Do not let `Application` regain subsystem-specific logic
-- [ ] Keep the program building at the end of every phase
+Exit criteria:
+
+- [ ] Terrain renders from the atlas
+- [ ] Units still render on top of terrain
+- [ ] Overlay text still renders correctly
+
+## Phase 8: App Wiring And Validation
+
+Goal: load assets at startup, wire terrain rendering end-to-end, and verify behavior.
+
+- [ ] Load atlas metadata during application startup
+- [ ] Load atlas image during application startup
+- [ ] Upload atlas to `GpuResources`
+- [ ] Seed test tile indices that match atlas contents
+- [ ] Confirm the program still opens a window
+- [ ] Confirm terrain is visible
+- [ ] Confirm units still render
+- [ ] Confirm fog still affects visible output
+- [ ] Confirm pan still works over the tile map
+- [ ] Confirm zoom still works over the tile map
+- [ ] Confirm resize still works
+- [ ] Confirm quit still works
+
+Exit criteria:
+
+- [ ] Atlas-backed terrain renders end-to-end
+- [ ] Existing runtime behavior still works
+- [ ] Renderer remains data-driven through extracted batches
+
+## Deferred For Later
+
+These are intentionally out of scope for the first tile-atlas pass.
+
+- [ ] Atlas-driven unit art
+- [ ] Animated tiles
+- [ ] Autotiling or terrain transitions
+- [ ] Multiple terrain layers
+- [ ] Chunk streaming
+- [ ] Asset editor tooling
+- [ ] Map file serialization format

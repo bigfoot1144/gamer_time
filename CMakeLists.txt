@@ -92,7 +92,7 @@ add_library(gt_gpu STATIC
     src/gpu/swapchain_manager.cpp
     src/gpu/texture_utils.cpp
     src/gpu/vulkan_context.cpp
-    src/vulkan_renderer.cpp
+    src/render/text_overlay_renderer.cpp
 )
 gt_configure_target(gt_gpu)
 target_link_libraries(gt_gpu PUBLIC
@@ -108,7 +108,6 @@ add_library(gt_render STATIC
     src/render/projection_system.cpp
     src/render/render_extractor.cpp
     src/render/scene_renderer.cpp
-    src/render/text_overlay_renderer.cpp
 )
 gt_configure_target(gt_render)
 target_link_libraries(gt_render PUBLIC

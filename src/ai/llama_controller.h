@@ -28,11 +28,6 @@ public:
     bool is_loading() const;
 
 private:
-    void push_status_if_changed();
-    void push_result_if_changed();
-
     mutable LlamaWorker worker_;
     TokenStream event_stream_;
-    std::string last_status_;
-    std::string last_result_;
 };

@@ -95,7 +95,13 @@ void Application::tick_frame(float dt_seconds) {
     depth_sorter_.run(render_world);
     RenderBatch batch = batch_builder_.build(render_world);
 
-    scene_renderer_.upload_frame_resources(batch, world_.fog_mask(), world_.fog_width(), world_.fog_height());
+    scene_renderer_.upload_frame_resources(
+        batch,
+        world_.fog_mask(),
+        world_.fog_width(),
+        world_.fog_height(),
+        camera_controller_.state()
+    );
     scene_renderer_.set_overlay_text(render_world.overlay_text);
     scene_renderer_.draw_frame();
     update_window_title(batch);
@@ -162,6 +168,7 @@ std::string Application::build_overlay_text() const {
 
 void Application::maybe_submit_prompt(const InputState & input) {
     if (!submitted_demo_prompt_ && llama_controller_.is_ready() && !config_.model_path.empty()) {
+        last_ai_result_.clear();
         llama_controller_.submit_prompt(
             "Write one sentence about keeping an RTS renderer smooth while gameplay and inference run concurrently.",
             48
@@ -171,6 +178,7 @@ void Application::maybe_submit_prompt(const InputState & input) {
     }
 
     if (input.space_pressed && llama_controller_.is_ready()) {
+        last_ai_result_.clear();
         llama_controller_.submit_prompt(
             "Give me a short status line for an RTS framework with Vulkan rendering and a worker-thread llama model.",
             32
@@ -185,6 +193,9 @@ std::vector<std::string> Application::collect_ai_events() {
         switch (event.type) {
         case AiEventType::Status:
             last_ai_status_ = event.text;
+            if (event.text == "Running inference...") {
+                last_ai_result_.clear();
+            }
             if (!event.text.empty()) {
                 events_for_render.push_back("status: " + event.text);
             }
@@ -197,9 +208,11 @@ std::vector<std::string> Application::collect_ai_events() {
             break;
         case AiEventType::Error:
             last_ai_status_ = "error";
+            last_ai_result_ = event.text;
             events_for_render.push_back("error: " + event.text);
             break;
         case AiEventType::Token:
+            last_ai_result_ += event.text;
             events_for_render.push_back(event.text);
             break;
         }

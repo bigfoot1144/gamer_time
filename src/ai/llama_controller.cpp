@@ -3,15 +3,15 @@
 #include <utility>
 
 void LlamaController::start(const std::string & model_path) {
+    worker_.set_event_callback([this](std::string event_text) {
+        event_stream_.push(std::move(event_text));
+    });
     worker_.start(model_path);
-    last_status_.clear();
-    last_result_.clear();
-    push_status_if_changed();
 }
 
 void LlamaController::shutdown() {
     worker_.shutdown();
-    push_status_if_changed();
+    worker_.set_event_callback({});
 }
 
 void LlamaController::submit_prompt(std::string prompt, int max_tokens) {
@@ -19,13 +19,9 @@ void LlamaController::submit_prompt(std::string prompt, int max_tokens) {
     job.prompt = std::move(prompt);
     job.max_tokens = max_tokens;
     worker_.submit(job);
-    push_status_if_changed();
 }
 
 std::vector<AiEvent> LlamaController::drain_events() {
-    push_status_if_changed();
-    push_result_if_changed();
-
     std::vector<AiEvent> events;
     for (std::string text : event_stream_.drain()) {
         AiEvent event{};
@@ -33,6 +29,9 @@ std::vector<AiEvent> LlamaController::drain_events() {
         if (event.text.rfind("status:", 0) == 0) {
             event.type = AiEventType::Status;
             event.text.erase(0, 7);
+        } else if (event.text.rfind("token:", 0) == 0) {
+            event.type = AiEventType::Token;
+            event.text.erase(0, 6);
         } else if (event.text.rfind("completed:", 0) == 0) {
             event.type = AiEventType::Completed;
             event.text.erase(0, 10);
@@ -53,22 +52,4 @@ bool LlamaController::is_ready() const {
 
 bool LlamaController::is_loading() const {
     return worker_.is_loading();
-}
-
-void LlamaController::push_status_if_changed() {
-    const std::string current_status = worker_.last_status();
-    if (current_status == last_status_) {
-        return;
-    }
-    last_status_ = current_status;
-    event_stream_.push("status:" + current_status);
-}
-
-void LlamaController::push_result_if_changed() {
-    const std::string current_result = worker_.last_result();
-    if (current_result.empty() || current_result == last_result_) {
-        return;
-    }
-    last_result_ = current_result;
-    event_stream_.push("completed:" + current_result);
 }

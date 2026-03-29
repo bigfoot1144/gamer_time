@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <mutex>
 #include <queue>
 #include <string>
@@ -11,6 +12,8 @@
 
 class LlamaWorker {
 public:
+    using EventCallback = std::function<void(std::string)>;
+
     struct Job {
         std::string prompt;
         int max_tokens = 64;
@@ -23,6 +26,7 @@ public:
     void shutdown();
 
     void submit(const Job & job);
+    void set_event_callback(EventCallback callback);
 
     bool is_ready() const;
     bool is_loading() const;
@@ -37,6 +41,7 @@ private:
 
     void set_status(std::string status);
     void set_result(std::string result);
+    void emit_event(std::string event_text);
 
 private:
     std::thread worker_thread_;
@@ -48,6 +53,7 @@ private:
     std::atomic<bool> ready_{false};
     std::atomic<bool> loading_{false};
 
+    EventCallback event_callback_;
     std::string last_status_;
     std::string last_result_;
 

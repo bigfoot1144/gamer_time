@@ -70,6 +70,11 @@ void LlamaWorker::submit(const Job & job) {
     cv_.notify_one();
 }
 
+void LlamaWorker::set_event_callback(EventCallback callback) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    event_callback_ = std::move(callback);
+}
+
 bool LlamaWorker::is_ready() const {
     return ready_.load();
 }
@@ -89,13 +94,38 @@ std::string LlamaWorker::last_result() const {
 }
 
 void LlamaWorker::set_status(std::string status) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    last_status_ = std::move(status);
+    std::string event_text;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_status_ = std::move(status);
+        event_text = "status:" + last_status_;
+    }
+    emit_event(std::move(event_text));
 }
 
 void LlamaWorker::set_result(std::string result) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    last_result_ = std::move(result);
+    std::string event_text;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_result_ = std::move(result);
+        if (!last_result_.empty()) {
+            event_text = "completed:" + last_result_;
+        }
+    }
+    if (!event_text.empty()) {
+        emit_event(std::move(event_text));
+    }
+}
+
+void LlamaWorker::emit_event(std::string event_text) {
+    EventCallback callback;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        callback = event_callback_;
+    }
+    if (callback) {
+        callback(std::move(event_text));
+    }
 }
 
 bool LlamaWorker::load_model(const std::string & model_path) {
@@ -167,9 +197,14 @@ void LlamaWorker::thread_main(std::string model_path) {
         }
 
         set_status("Running inference...");
+        set_result({});
         const std::string output = run_inference(job);
-        set_result(output);
-        std::cout << "\n=== Llama Output ===\n" << output << "\n";
+        if (output.rfind("error:", 0) == 0) {
+            emit_event(output);
+        } else {
+            set_result(output);
+            std::cout << "\n=== Llama Output ===\n" << output << "\n";
+        }
         set_status("Ready");
     }
 
@@ -192,7 +227,7 @@ void LlamaWorker::thread_main(std::string model_path) {
 
 std::string LlamaWorker::run_inference(const Job & job) {
     if (!ctx_ || !model_ || !vocab_) {
-        return "llama worker not initialized";
+        return "error:llama worker not initialized";
     }
 
     const std::string prompt = job.prompt.empty() ? std::string("Hello") : job.prompt;
@@ -224,7 +259,7 @@ std::string LlamaWorker::run_inference(const Job & job) {
     }
 
     if (num_prompt_tokens <= 0) {
-        return "tokenization failed";
+        return "error:tokenization failed";
     }
 
     prompt_tokens.resize(static_cast<size_t>(num_prompt_tokens));
@@ -235,7 +270,7 @@ std::string LlamaWorker::run_inference(const Job & job) {
     );
 
     if (llama_decode(ctx_, batch) != 0) {
-        return "initial decode failed";
+        return "error:initial decode failed";
     }
 
     std::ostringstream out;
@@ -262,7 +297,11 @@ std::string LlamaWorker::run_inference(const Job & job) {
             break;
         }
 
-        out << token_to_string(vocab_, best_token);
+        const std::string token_piece = token_to_string(vocab_, best_token);
+        out << token_piece;
+        if (!token_piece.empty()) {
+            emit_event("token:" + token_piece);
+        }
 
         llama_token next_token = best_token;
         llama_batch next_batch = llama_batch_get_one(&next_token, 1);
