@@ -28,36 +28,114 @@ set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
 add_subdirectory(external/llama.cpp)
 
-file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-)
-
-if(GAME_SOURCES STREQUAL "")
-    message(FATAL_ERROR "No source files found in ${CMAKE_CURRENT_SOURCE_DIR}/src")
+if(UNIX AND NOT APPLE)
+    find_package(Threads REQUIRED)
 endif()
 
-add_executable(game ${GAME_SOURCES})
+function(gt_configure_target target_name)
+    target_include_directories(${target_name} PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
 
-target_include_directories(game PRIVATE
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /W4)
+    else()
+        target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()
+
+add_library(gt_core INTERFACE)
+target_include_directories(gt_core INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
-target_link_libraries(game PRIVATE
-    SDL3::SDL3-static
-    Vulkan::Vulkan
+add_library(gt_ai STATIC
+    src/ai/llama_controller.cpp
+    src/ai/token_stream.cpp
+    src/llama_worker.cpp
+)
+gt_configure_target(gt_ai)
+target_link_libraries(gt_ai PUBLIC
+    gt_core
     llama
 )
-
 if(UNIX AND NOT APPLE)
-    find_package(Threads REQUIRED)
-    target_link_libraries(game PRIVATE Threads::Threads dl)
+    target_link_libraries(gt_ai PUBLIC Threads::Threads dl)
 endif()
 
-if(MSVC)
-    target_compile_options(game PRIVATE /W4)
-else()
-    target_compile_options(game PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+add_library(gt_platform STATIC
+    src/platform/camera_controller.cpp
+    src/platform/sdl_platform.cpp
+)
+gt_configure_target(gt_platform)
+target_link_libraries(gt_platform PUBLIC
+    gt_core
+    SDL3::SDL3-static
+)
+
+add_library(gt_game STATIC
+    src/game/command_queue.cpp
+    src/game/fog_of_war_system.cpp
+    src/game/navigation_system.cpp
+    src/game/selection_system.cpp
+    src/game/world.cpp
+)
+gt_configure_target(gt_game)
+target_link_libraries(gt_game PUBLIC
+    gt_core
+    gt_platform
+)
+
+add_library(gt_gpu STATIC
+    src/gpu/buffer_utils.cpp
+    src/gpu/gpu_resources.cpp
+    src/gpu/swapchain_manager.cpp
+    src/gpu/texture_utils.cpp
+    src/gpu/vulkan_context.cpp
+    src/vulkan_renderer.cpp
+)
+gt_configure_target(gt_gpu)
+target_link_libraries(gt_gpu PUBLIC
+    gt_core
+    Vulkan::Vulkan
+    SDL3::SDL3-static
+)
+
+add_library(gt_render STATIC
+    src/render/batch_builder.cpp
+    src/render/depth_sorter.cpp
+    src/render/frustum_culler.cpp
+    src/render/projection_system.cpp
+    src/render/render_extractor.cpp
+    src/render/scene_renderer.cpp
+    src/render/text_overlay_renderer.cpp
+)
+gt_configure_target(gt_render)
+target_link_libraries(gt_render PUBLIC
+    gt_core
+    gt_game
+    gt_gpu
+    gt_platform
+)
+
+add_library(gt_app STATIC
+    src/app/application.cpp
+)
+gt_configure_target(gt_app)
+target_link_libraries(gt_app PUBLIC
+    gt_ai
+    gt_game
+    gt_platform
+    gt_render
+)
+
+add_executable(game
+    src/main.cpp
+)
+gt_configure_target(game)
+target_link_libraries(game PRIVATE
+    gt_app
+)
 
 set(DEFAULT_MODEL_PATH "../model/Qwen3-VL-4B-Instruct-Q4_K_M.gguf")
 set(SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
