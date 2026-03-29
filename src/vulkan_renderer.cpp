@@ -42,24 +42,26 @@ VulkanRenderer::~VulkanRenderer() {
     shutdown();
 }
 
-void VulkanRenderer::init(SDL_Window* window, const std::string& shader_dir) {
+void VulkanRenderer::init(
+    SDL_Window * window,
+    const std::string & shader_dir,
+    gpu::VulkanContext & context,
+    gpu::SwapchainManager & swapchain
+) {
     shutdown();
     window_ = window;
+    context_ = &context;
+    swapchain_ = &swapchain;
     shader_dir_ = shader_dir;
     overlay_text_.clear();
     text_dirty_ = true;
 
-    create_instance();
-    create_surface();
-    pick_physical_device();
-    create_logical_device();
-    create_swapchain();
-    create_image_views();
+    swapchain_->initialize(*context_, window_, VK_NULL_HANDLE);
     create_render_pass();
     create_text_descriptor_set_layout();
     create_graphics_pipeline();
     create_text_pipeline();
-    create_framebuffers();
+    swapchain_->rebuild_framebuffers(device(), render_pass_);
     create_command_pool();
     create_text_resources();
     create_command_buffers();
@@ -68,86 +70,73 @@ void VulkanRenderer::init(SDL_Window* window, const std::string& shader_dir) {
 }
 
 void VulkanRenderer::shutdown() {
-    if (!window_ && !initialized_) {
+    VkDevice current_device = device();
+    if (!window_ && !initialized_ && current_device == VK_NULL_HANDLE) {
         return;
     }
 
-    if (device_ != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(device_);
+    if (current_device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(current_device);
     }
 
-    cleanup_swapchain();
+    cleanup_swapchain_dependent_state();
 
     for (size_t i = 0; i < image_available_semaphores_.size(); ++i) {
-        vkDestroySemaphore(device_, image_available_semaphores_[i], nullptr);
-        vkDestroySemaphore(device_, render_finished_semaphores_[i], nullptr);
-        vkDestroyFence(device_, in_flight_fences_[i], nullptr);
+        vkDestroySemaphore(current_device, image_available_semaphores_[i], nullptr);
+        vkDestroySemaphore(current_device, render_finished_semaphores_[i], nullptr);
+        vkDestroyFence(current_device, in_flight_fences_[i], nullptr);
     }
     image_available_semaphores_.clear();
     render_finished_semaphores_.clear();
     in_flight_fences_.clear();
 
     if (text_vertex_buffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, text_vertex_buffer_, nullptr);
+        vkDestroyBuffer(current_device, text_vertex_buffer_, nullptr);
         text_vertex_buffer_ = VK_NULL_HANDLE;
     }
     if (text_vertex_buffer_memory_ != VK_NULL_HANDLE) {
-        vkFreeMemory(device_, text_vertex_buffer_memory_, nullptr);
+        vkFreeMemory(current_device, text_vertex_buffer_memory_, nullptr);
         text_vertex_buffer_memory_ = VK_NULL_HANDLE;
     }
     text_vertex_capacity_ = 0;
     text_vertex_count_ = 0;
 
     if (font_atlas_sampler_ != VK_NULL_HANDLE) {
-        vkDestroySampler(device_, font_atlas_sampler_, nullptr);
+        vkDestroySampler(current_device, font_atlas_sampler_, nullptr);
         font_atlas_sampler_ = VK_NULL_HANDLE;
     }
     if (font_atlas_image_view_ != VK_NULL_HANDLE) {
-        vkDestroyImageView(device_, font_atlas_image_view_, nullptr);
+        vkDestroyImageView(current_device, font_atlas_image_view_, nullptr);
         font_atlas_image_view_ = VK_NULL_HANDLE;
     }
     if (font_atlas_image_ != VK_NULL_HANDLE) {
-        vkDestroyImage(device_, font_atlas_image_, nullptr);
+        vkDestroyImage(current_device, font_atlas_image_, nullptr);
         font_atlas_image_ = VK_NULL_HANDLE;
     }
     if (font_atlas_image_memory_ != VK_NULL_HANDLE) {
-        vkFreeMemory(device_, font_atlas_image_memory_, nullptr);
+        vkFreeMemory(current_device, font_atlas_image_memory_, nullptr);
         font_atlas_image_memory_ = VK_NULL_HANDLE;
     }
 
     if (text_descriptor_pool_ != VK_NULL_HANDLE) {
-        vkDestroyDescriptorPool(device_, text_descriptor_pool_, nullptr);
+        vkDestroyDescriptorPool(current_device, text_descriptor_pool_, nullptr);
         text_descriptor_pool_ = VK_NULL_HANDLE;
         text_descriptor_set_ = VK_NULL_HANDLE;
     }
     if (text_descriptor_set_layout_ != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(device_, text_descriptor_set_layout_, nullptr);
+        vkDestroyDescriptorSetLayout(current_device, text_descriptor_set_layout_, nullptr);
         text_descriptor_set_layout_ = VK_NULL_HANDLE;
     }
 
     if (command_pool_ != VK_NULL_HANDLE) {
-        vkDestroyCommandPool(device_, command_pool_, nullptr);
+        vkDestroyCommandPool(current_device, command_pool_, nullptr);
         command_pool_ = VK_NULL_HANDLE;
     }
 
-    if (device_ != VK_NULL_HANDLE) {
-        vkDestroyDevice(device_, nullptr);
-        device_ = VK_NULL_HANDLE;
-    }
-
-    if (surface_ != VK_NULL_HANDLE) {
-        vkDestroySurfaceKHR(instance_, surface_, nullptr);
-        surface_ = VK_NULL_HANDLE;
-    }
-
-    if (instance_ != VK_NULL_HANDLE) {
-        vkDestroyInstance(instance_, nullptr);
-        instance_ = VK_NULL_HANDLE;
-    }
-
-    swapchain_images_.clear();
     overlay_text_.clear();
     window_ = nullptr;
+    context_ = nullptr;
+    swapchain_ = nullptr;
     initialized_ = false;
     framebuffer_resized_ = false;
     text_dirty_ = true;
@@ -168,219 +157,14 @@ void VulkanRenderer::set_overlay_text(std::string text) {
 }
 
 void VulkanRenderer::wait_idle() {
-    if (device_ != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(device_);
+    if (device() != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(device());
     }
-}
-
-void VulkanRenderer::create_instance() {
-    uint32_t ext_count = 0;
-    const char* const* sdl_extensions = SDL_Vulkan_GetInstanceExtensions(&ext_count);
-    if (!sdl_extensions) {
-        fail(std::string("SDL_Vulkan_GetInstanceExtensions failed: ") + SDL_GetError());
-    }
-
-    std::vector<const char*> extensions(sdl_extensions, sdl_extensions + ext_count);
-
-    VkApplicationInfo app_info{};
-    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    app_info.pApplicationName = "SDL3 Vulkan Triangle";
-    app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.pEngineName = "custom";
-    app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.apiVersion = VK_API_VERSION_1_2;
-
-    VkInstanceCreateInfo create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    create_info.pApplicationInfo = &app_info;
-    create_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-    create_info.ppEnabledExtensionNames = extensions.data();
-
-    check_vk(vkCreateInstance(&create_info, nullptr, &instance_), "Failed to create Vulkan instance");
-}
-
-void VulkanRenderer::create_surface() {
-    if (!SDL_Vulkan_CreateSurface(window_, instance_, nullptr, &surface_)) {
-        fail(std::string("SDL_Vulkan_CreateSurface failed: ") + SDL_GetError());
-    }
-}
-
-QueueFamilyIndices VulkanRenderer::find_queue_families(VkPhysicalDevice device) const {
-    QueueFamilyIndices indices;
-
-    uint32_t queue_family_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
-
-    std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
-
-    for (uint32_t i = 0; i < queue_family_count; ++i) {
-        if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            indices.graphics_family = i;
-        }
-
-        VkBool32 present_support = VK_FALSE;
-        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface_, &present_support);
-        if (present_support) {
-            indices.present_family = i;
-        }
-
-        if (indices.complete()) {
-            break;
-        }
-    }
-
-    return indices;
-}
-
-bool VulkanRenderer::check_device_extension_support(VkPhysicalDevice device) const {
-    uint32_t extension_count = 0;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
-
-    std::vector<VkExtensionProperties> available_extensions(extension_count);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.data());
-
-    std::set<std::string> required_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-    for (const auto& extension : available_extensions) {
-        required_extensions.erase(extension.extensionName);
-    }
-
-    return required_extensions.empty();
-}
-
-SwapchainSupportDetails VulkanRenderer::query_swapchain_support(VkPhysicalDevice device) const {
-    SwapchainSupportDetails details{};
-
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface_, &details.capabilities);
-
-    uint32_t format_count = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface_, &format_count, nullptr);
-    if (format_count > 0) {
-        details.formats.resize(format_count);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface_, &format_count, details.formats.data());
-    }
-
-    uint32_t present_mode_count = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface_, &present_mode_count, nullptr);
-    if (present_mode_count > 0) {
-        details.present_modes.resize(present_mode_count);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface_, &present_mode_count, details.present_modes.data());
-    }
-
-    return details;
-}
-
-bool VulkanRenderer::is_device_suitable(VkPhysicalDevice device) const {
-    QueueFamilyIndices indices = find_queue_families(device);
-    const bool extensions_supported = check_device_extension_support(device);
-
-    bool swapchain_adequate = false;
-    if (extensions_supported) {
-        const auto swapchain_support = query_swapchain_support(device);
-        swapchain_adequate = !swapchain_support.formats.empty() && !swapchain_support.present_modes.empty();
-    }
-
-    return indices.complete() && extensions_supported && swapchain_adequate;
-}
-
-void VulkanRenderer::pick_physical_device() {
-    uint32_t device_count = 0;
-    vkEnumeratePhysicalDevices(instance_, &device_count, nullptr);
-    if (device_count == 0) {
-        fail("No Vulkan physical devices found");
-    }
-
-    std::vector<VkPhysicalDevice> devices(device_count);
-    vkEnumeratePhysicalDevices(instance_, &device_count, devices.data());
-
-    for (VkPhysicalDevice device : devices) {
-        if (is_device_suitable(device)) {
-            physical_device_ = device;
-            break;
-        }
-    }
-
-    if (physical_device_ == VK_NULL_HANDLE) {
-        fail("Failed to find a suitable Vulkan GPU");
-    }
-}
-
-void VulkanRenderer::create_logical_device() {
-    const QueueFamilyIndices indices = find_queue_families(physical_device_);
-    std::set<uint32_t> unique_queue_families = {
-        indices.graphics_family.value(),
-        indices.present_family.value(),
-    };
-
-    const float queue_priority = 1.0f;
-    std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
-    for (uint32_t queue_family : unique_queue_families) {
-        VkDeviceQueueCreateInfo queue_create_info{};
-        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_create_info.queueFamilyIndex = queue_family;
-        queue_create_info.queueCount = 1;
-        queue_create_info.pQueuePriorities = &queue_priority;
-        queue_create_infos.push_back(queue_create_info);
-    }
-
-    const std::vector<const char*> device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-    VkPhysicalDeviceFeatures device_features{};
-
-    VkDeviceCreateInfo create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
-    create_info.pQueueCreateInfos = queue_create_infos.data();
-    create_info.pEnabledFeatures = &device_features;
-    create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
-    create_info.ppEnabledExtensionNames = device_extensions.data();
-
-    check_vk(vkCreateDevice(physical_device_, &create_info, nullptr, &device_), "Failed to create logical device");
-
-    vkGetDeviceQueue(device_, indices.graphics_family.value(), 0, &graphics_queue_);
-    vkGetDeviceQueue(device_, indices.present_family.value(), 0, &present_queue_);
-}
-
-VkSurfaceFormatKHR VulkanRenderer::choose_swap_surface_format(const std::vector<VkSurfaceFormatKHR>& available_formats) const {
-    for (const auto& available_format : available_formats) {
-        if (available_format.format == VK_FORMAT_B8G8R8A8_UNORM &&
-            available_format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            return available_format;
-        }
-    }
-    return available_formats[0];
-}
-
-VkPresentModeKHR VulkanRenderer::choose_swap_present_mode(const std::vector<VkPresentModeKHR>& available_present_modes) const {
-    for (const auto& available_present_mode : available_present_modes) {
-        if (available_present_mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            return available_present_mode;
-        }
-    }
-    return VK_PRESENT_MODE_FIFO_KHR;
-}
-
-VkExtent2D VulkanRenderer::choose_swap_extent(const VkSurfaceCapabilitiesKHR& capabilities) const {
-    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
-        return capabilities.currentExtent;
-    }
-
-    int width = 0;
-    int height = 0;
-    SDL_GetWindowSizeInPixels(window_, &width, &height);
-
-    VkExtent2D actual_extent = {
-        static_cast<uint32_t>(width),
-        static_cast<uint32_t>(height),
-    };
-
-    actual_extent.width = std::clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-    actual_extent.height = std::clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
-    return actual_extent;
 }
 
 uint32_t VulkanRenderer::find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties) const {
     VkPhysicalDeviceMemoryProperties memory_properties{};
-    vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties);
+    vkGetPhysicalDeviceMemoryProperties(physical_device(), &memory_properties);
 
     for (uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i) {
         const bool matches_type = (type_filter & (1u << i)) != 0;
@@ -407,18 +191,18 @@ void VulkanRenderer::create_buffer(
     buffer_info.usage = usage;
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    check_vk(vkCreateBuffer(device_, &buffer_info, nullptr, &buffer), "Failed to create buffer");
+    check_vk(vkCreateBuffer(device(), &buffer_info, nullptr, &buffer), "Failed to create buffer");
 
     VkMemoryRequirements memory_requirements{};
-    vkGetBufferMemoryRequirements(device_, buffer, &memory_requirements);
+    vkGetBufferMemoryRequirements(device(), buffer, &memory_requirements);
 
     VkMemoryAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = memory_requirements.size;
     alloc_info.memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, properties);
 
-    check_vk(vkAllocateMemory(device_, &alloc_info, nullptr, &buffer_memory), "Failed to allocate buffer memory");
-    check_vk(vkBindBufferMemory(device_, buffer, buffer_memory, 0), "Failed to bind buffer memory");
+    check_vk(vkAllocateMemory(device(), &alloc_info, nullptr, &buffer_memory), "Failed to allocate buffer memory");
+    check_vk(vkBindBufferMemory(device(), buffer, buffer_memory, 0), "Failed to bind buffer memory");
 }
 
 void VulkanRenderer::create_image(
@@ -446,18 +230,18 @@ void VulkanRenderer::create_image(
     image_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    check_vk(vkCreateImage(device_, &image_info, nullptr, &image), "Failed to create image");
+    check_vk(vkCreateImage(device(), &image_info, nullptr, &image), "Failed to create image");
 
     VkMemoryRequirements memory_requirements{};
-    vkGetImageMemoryRequirements(device_, image, &memory_requirements);
+    vkGetImageMemoryRequirements(device(), image, &memory_requirements);
 
     VkMemoryAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = memory_requirements.size;
     alloc_info.memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, properties);
 
-    check_vk(vkAllocateMemory(device_, &alloc_info, nullptr, &image_memory), "Failed to allocate image memory");
-    check_vk(vkBindImageMemory(device_, image, image_memory, 0), "Failed to bind image memory");
+    check_vk(vkAllocateMemory(device(), &alloc_info, nullptr, &image_memory), "Failed to allocate image memory");
+    check_vk(vkBindImageMemory(device(), image, image_memory, 0), "Failed to bind image memory");
 }
 
 VkImageView VulkanRenderer::create_image_view(VkImage image, VkFormat format) const {
@@ -473,7 +257,7 @@ VkImageView VulkanRenderer::create_image_view(VkImage image, VkFormat format) co
     view_info.subresourceRange.layerCount = 1;
 
     VkImageView image_view = VK_NULL_HANDLE;
-    check_vk(vkCreateImageView(device_, &view_info, nullptr, &image_view), "Failed to create image view");
+    check_vk(vkCreateImageView(device(), &view_info, nullptr, &image_view), "Failed to create image view");
     return image_view;
 }
 
@@ -485,7 +269,7 @@ VkCommandBuffer VulkanRenderer::begin_single_time_commands() const {
     alloc_info.commandBufferCount = 1;
 
     VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-    check_vk(vkAllocateCommandBuffers(device_, &alloc_info, &command_buffer), "Failed to allocate one-time command buffer");
+    check_vk(vkAllocateCommandBuffers(device(), &alloc_info, &command_buffer), "Failed to allocate one-time command buffer");
 
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -502,9 +286,9 @@ void VulkanRenderer::end_single_time_commands(VkCommandBuffer command_buffer) co
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &command_buffer;
 
-    check_vk(vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE), "Failed to submit one-time command buffer");
-    check_vk(vkQueueWaitIdle(graphics_queue_), "Failed to wait for graphics queue");
-    vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
+    check_vk(vkQueueSubmit(graphics_queue(), 1, &submit_info, VK_NULL_HANDLE), "Failed to submit one-time command buffer");
+    check_vk(vkQueueWaitIdle(graphics_queue()), "Failed to wait for graphics queue");
+    vkFreeCommandBuffers(device(), command_pool_, 1, &command_buffer);
 }
 
 void VulkanRenderer::transition_image_layout(
@@ -590,67 +374,9 @@ void VulkanRenderer::copy_buffer_to_image(
     end_single_time_commands(command_buffer);
 }
 
-void VulkanRenderer::create_swapchain() {
-    const auto swapchain_support = query_swapchain_support(physical_device_);
-    const auto surface_format = choose_swap_surface_format(swapchain_support.formats);
-    const auto present_mode = choose_swap_present_mode(swapchain_support.present_modes);
-    const auto extent = choose_swap_extent(swapchain_support.capabilities);
-
-    uint32_t image_count = swapchain_support.capabilities.minImageCount + 1;
-    if (swapchain_support.capabilities.maxImageCount > 0 && image_count > swapchain_support.capabilities.maxImageCount) {
-        image_count = swapchain_support.capabilities.maxImageCount;
-    }
-
-    const QueueFamilyIndices indices = find_queue_families(physical_device_);
-    const uint32_t queue_family_indices[] = {
-        indices.graphics_family.value(),
-        indices.present_family.value(),
-    };
-
-    VkSwapchainCreateInfoKHR create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    create_info.surface = surface_;
-    create_info.minImageCount = image_count;
-    create_info.imageFormat = surface_format.format;
-    create_info.imageColorSpace = surface_format.colorSpace;
-    create_info.imageExtent = extent;
-    create_info.imageArrayLayers = 1;
-    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-    if (indices.graphics_family != indices.present_family) {
-        create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-        create_info.queueFamilyIndexCount = 2;
-        create_info.pQueueFamilyIndices = queue_family_indices;
-    } else {
-        create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    }
-
-    create_info.preTransform = swapchain_support.capabilities.currentTransform;
-    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    create_info.presentMode = present_mode;
-    create_info.clipped = VK_TRUE;
-
-    check_vk(vkCreateSwapchainKHR(device_, &create_info, nullptr, &swapchain_), "Failed to create swapchain");
-
-    vkGetSwapchainImagesKHR(device_, swapchain_, &image_count, nullptr);
-    swapchain_images_.resize(image_count);
-    vkGetSwapchainImagesKHR(device_, swapchain_, &image_count, swapchain_images_.data());
-
-    swapchain_image_format_ = surface_format.format;
-    swapchain_extent_ = extent;
-}
-
-void VulkanRenderer::create_image_views() {
-    swapchain_image_views_.resize(swapchain_images_.size());
-
-    for (size_t i = 0; i < swapchain_images_.size(); ++i) {
-        swapchain_image_views_[i] = create_image_view(swapchain_images_[i], swapchain_image_format_);
-    }
-}
-
 void VulkanRenderer::create_render_pass() {
     VkAttachmentDescription color_attachment{};
-    color_attachment.format = swapchain_image_format_;
+    color_attachment.format = swapchain_state().image_format();
     color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
     color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -684,7 +410,7 @@ void VulkanRenderer::create_render_pass() {
     render_pass_info.dependencyCount = 1;
     render_pass_info.pDependencies = &dependency;
 
-    check_vk(vkCreateRenderPass(device_, &render_pass_info, nullptr, &render_pass_), "Failed to create render pass");
+    check_vk(vkCreateRenderPass(device(), &render_pass_info, nullptr, &render_pass_), "Failed to create render pass");
 }
 
 std::vector<uint32_t> VulkanRenderer::load_spirv_file(const std::string& path) const {
@@ -711,7 +437,7 @@ VkShaderModule VulkanRenderer::create_shader_module(const std::vector<uint32_t>&
     create_info.pCode = code.data();
 
     VkShaderModule shader_module = VK_NULL_HANDLE;
-    check_vk(vkCreateShaderModule(device_, &create_info, nullptr, &shader_module), "Failed to create shader module");
+    check_vk(vkCreateShaderModule(device(), &create_info, nullptr, &shader_module), "Failed to create shader module");
     return shader_module;
 }
 
@@ -748,13 +474,13 @@ void VulkanRenderer::create_graphics_pipeline() {
     input_assembly.primitiveRestartEnable = VK_FALSE;
 
     VkViewport viewport{};
-    viewport.width = static_cast<float>(swapchain_extent_.width);
-    viewport.height = static_cast<float>(swapchain_extent_.height);
+    viewport.width = static_cast<float>(swapchain_state().extent().width);
+    viewport.height = static_cast<float>(swapchain_state().extent().height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
     VkRect2D scissor{};
-    scissor.extent = swapchain_extent_;
+    scissor.extent = swapchain_state().extent();
 
     VkPipelineViewportStateCreateInfo viewport_state{};
     viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -794,7 +520,7 @@ void VulkanRenderer::create_graphics_pipeline() {
     VkPipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 
-    check_vk(vkCreatePipelineLayout(device_, &pipeline_layout_info, nullptr, &pipeline_layout_), "Failed to create pipeline layout");
+    check_vk(vkCreatePipelineLayout(device(), &pipeline_layout_info, nullptr, &pipeline_layout_), "Failed to create pipeline layout");
 
     VkGraphicsPipelineCreateInfo pipeline_info{};
     pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -810,10 +536,10 @@ void VulkanRenderer::create_graphics_pipeline() {
     pipeline_info.renderPass = render_pass_;
     pipeline_info.subpass = 0;
 
-    check_vk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline_), "Failed to create graphics pipeline");
+    check_vk(vkCreateGraphicsPipelines(device(), VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline_), "Failed to create graphics pipeline");
 
-    vkDestroyShaderModule(device_, frag_shader_module, nullptr);
-    vkDestroyShaderModule(device_, vert_shader_module, nullptr);
+    vkDestroyShaderModule(device(), frag_shader_module, nullptr);
+    vkDestroyShaderModule(device(), vert_shader_module, nullptr);
 }
 
 void VulkanRenderer::create_text_descriptor_set_layout() {
@@ -829,7 +555,7 @@ void VulkanRenderer::create_text_descriptor_set_layout() {
     layout_info.pBindings = &sampler_binding;
 
     check_vk(
-        vkCreateDescriptorSetLayout(device_, &layout_info, nullptr, &text_descriptor_set_layout_),
+        vkCreateDescriptorSetLayout(device(), &layout_info, nullptr, &text_descriptor_set_layout_),
         "Failed to create text descriptor set layout"
     );
 }
@@ -874,11 +600,11 @@ void VulkanRenderer::create_text_resources() {
 
     void* mapped_data = nullptr;
     check_vk(
-        vkMapMemory(device_, staging_buffer_memory, 0, atlas_pixels.size(), 0, &mapped_data),
+        vkMapMemory(device(), staging_buffer_memory, 0, atlas_pixels.size(), 0, &mapped_data),
         "Failed to map atlas staging memory"
     );
     std::memcpy(mapped_data, atlas_pixels.data(), atlas_pixels.size());
-    vkUnmapMemory(device_, staging_buffer_memory);
+    vkUnmapMemory(device(), staging_buffer_memory);
 
     create_image(
         atlas_width,
@@ -895,8 +621,8 @@ void VulkanRenderer::create_text_resources() {
     copy_buffer_to_image(staging_buffer, font_atlas_image_, atlas_width, atlas_height);
     transition_image_layout(font_atlas_image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-    vkDestroyBuffer(device_, staging_buffer, nullptr);
-    vkFreeMemory(device_, staging_buffer_memory, nullptr);
+    vkDestroyBuffer(device(), staging_buffer, nullptr);
+    vkFreeMemory(device(), staging_buffer_memory, nullptr);
 
     font_atlas_image_view_ = create_image_view(font_atlas_image_, VK_FORMAT_R8G8B8A8_UNORM);
 
@@ -914,7 +640,7 @@ void VulkanRenderer::create_text_resources() {
     sampler_info.compareEnable = VK_FALSE;
     sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
 
-    check_vk(vkCreateSampler(device_, &sampler_info, nullptr, &font_atlas_sampler_), "Failed to create font atlas sampler");
+    check_vk(vkCreateSampler(device(), &sampler_info, nullptr, &font_atlas_sampler_), "Failed to create font atlas sampler");
 
     VkDescriptorPoolSize pool_size{};
     pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -926,7 +652,7 @@ void VulkanRenderer::create_text_resources() {
     pool_info.pPoolSizes = &pool_size;
     pool_info.maxSets = 1;
 
-    check_vk(vkCreateDescriptorPool(device_, &pool_info, nullptr, &text_descriptor_pool_), "Failed to create text descriptor pool");
+    check_vk(vkCreateDescriptorPool(device(), &pool_info, nullptr, &text_descriptor_pool_), "Failed to create text descriptor pool");
 
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -934,7 +660,7 @@ void VulkanRenderer::create_text_resources() {
     alloc_info.descriptorSetCount = 1;
     alloc_info.pSetLayouts = &text_descriptor_set_layout_;
 
-    check_vk(vkAllocateDescriptorSets(device_, &alloc_info, &text_descriptor_set_), "Failed to allocate text descriptor set");
+    check_vk(vkAllocateDescriptorSets(device(), &alloc_info, &text_descriptor_set_), "Failed to allocate text descriptor set");
 
     VkDescriptorImageInfo image_info{};
     image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -949,7 +675,7 @@ void VulkanRenderer::create_text_resources() {
     descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     descriptor_write.pImageInfo = &image_info;
 
-    vkUpdateDescriptorSets(device_, 1, &descriptor_write, 0, nullptr);
+    vkUpdateDescriptorSets(device(), 1, &descriptor_write, 0, nullptr);
 
     text_vertex_capacity_ = kMaxOverlayGlyphs * 6;
     create_buffer(
@@ -1013,13 +739,13 @@ void VulkanRenderer::create_text_pipeline() {
     input_assembly.primitiveRestartEnable = VK_FALSE;
 
     VkViewport viewport{};
-    viewport.width = static_cast<float>(swapchain_extent_.width);
-    viewport.height = static_cast<float>(swapchain_extent_.height);
+    viewport.width = static_cast<float>(swapchain_state().extent().width);
+    viewport.height = static_cast<float>(swapchain_state().extent().height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
     VkRect2D scissor{};
-    scissor.extent = swapchain_extent_;
+    scissor.extent = swapchain_state().extent();
 
     VkPipelineViewportStateCreateInfo viewport_state{};
     viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -1067,7 +793,7 @@ void VulkanRenderer::create_text_pipeline() {
     pipeline_layout_info.setLayoutCount = 1;
     pipeline_layout_info.pSetLayouts = &text_descriptor_set_layout_;
 
-    check_vk(vkCreatePipelineLayout(device_, &pipeline_layout_info, nullptr, &text_pipeline_layout_), "Failed to create text pipeline layout");
+    check_vk(vkCreatePipelineLayout(device(), &pipeline_layout_info, nullptr, &text_pipeline_layout_), "Failed to create text pipeline layout");
 
     VkGraphicsPipelineCreateInfo pipeline_info{};
     pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -1083,44 +809,25 @@ void VulkanRenderer::create_text_pipeline() {
     pipeline_info.renderPass = render_pass_;
     pipeline_info.subpass = 0;
 
-    check_vk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &text_pipeline_), "Failed to create text pipeline");
+    check_vk(vkCreateGraphicsPipelines(device(), VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &text_pipeline_), "Failed to create text pipeline");
 
-    vkDestroyShaderModule(device_, frag_shader_module, nullptr);
-    vkDestroyShaderModule(device_, vert_shader_module, nullptr);
-}
-
-void VulkanRenderer::create_framebuffers() {
-    framebuffers_.resize(swapchain_image_views_.size());
-
-    for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
-        VkImageView attachments[] = {swapchain_image_views_[i]};
-
-        VkFramebufferCreateInfo framebuffer_info{};
-        framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebuffer_info.renderPass = render_pass_;
-        framebuffer_info.attachmentCount = 1;
-        framebuffer_info.pAttachments = attachments;
-        framebuffer_info.width = swapchain_extent_.width;
-        framebuffer_info.height = swapchain_extent_.height;
-        framebuffer_info.layers = 1;
-
-        check_vk(vkCreateFramebuffer(device_, &framebuffer_info, nullptr, &framebuffers_[i]), "Failed to create framebuffer");
-    }
+    vkDestroyShaderModule(device(), frag_shader_module, nullptr);
+    vkDestroyShaderModule(device(), vert_shader_module, nullptr);
 }
 
 void VulkanRenderer::create_command_pool() {
-    const QueueFamilyIndices indices = find_queue_families(physical_device_);
+    const gpu::QueueFamilyIndices indices = context_->find_queue_families(physical_device(), context_->surface());
 
     VkCommandPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     pool_info.queueFamilyIndex = indices.graphics_family.value();
 
-    check_vk(vkCreateCommandPool(device_, &pool_info, nullptr, &command_pool_), "Failed to create command pool");
+    check_vk(vkCreateCommandPool(device(), &pool_info, nullptr, &command_pool_), "Failed to create command pool");
 }
 
 void VulkanRenderer::create_command_buffers() {
-    command_buffers_.resize(framebuffers_.size());
+    command_buffers_.resize(swapchain_state().framebuffers().size());
 
     VkCommandBufferAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -1128,7 +835,7 @@ void VulkanRenderer::create_command_buffers() {
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     alloc_info.commandBufferCount = static_cast<uint32_t>(command_buffers_.size());
 
-    check_vk(vkAllocateCommandBuffers(device_, &alloc_info, command_buffers_.data()), "Failed to allocate command buffers");
+    check_vk(vkAllocateCommandBuffers(device(), &alloc_info, command_buffers_.data()), "Failed to allocate command buffers");
 }
 
 void VulkanRenderer::create_sync_objects() {
@@ -1144,83 +851,62 @@ void VulkanRenderer::create_sync_objects() {
     fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     for (int i = 0; i < kMaxFramesInFlight; ++i) {
-        check_vk(vkCreateSemaphore(device_, &semaphore_info, nullptr, &image_available_semaphores_[i]), "Failed to create image_available semaphore");
-        check_vk(vkCreateSemaphore(device_, &semaphore_info, nullptr, &render_finished_semaphores_[i]), "Failed to create render_finished semaphore");
-        check_vk(vkCreateFence(device_, &fence_info, nullptr, &in_flight_fences_[i]), "Failed to create in_flight fence");
+        check_vk(vkCreateSemaphore(device(), &semaphore_info, nullptr, &image_available_semaphores_[i]), "Failed to create image_available semaphore");
+        check_vk(vkCreateSemaphore(device(), &semaphore_info, nullptr, &render_finished_semaphores_[i]), "Failed to create render_finished semaphore");
+        check_vk(vkCreateFence(device(), &fence_info, nullptr, &in_flight_fences_[i]), "Failed to create in_flight fence");
     }
 }
 
-void VulkanRenderer::cleanup_swapchain() {
+void VulkanRenderer::cleanup_swapchain_dependent_state() {
     if (text_pipeline_ != VK_NULL_HANDLE) {
-        vkDestroyPipeline(device_, text_pipeline_, nullptr);
+        vkDestroyPipeline(device(), text_pipeline_, nullptr);
         text_pipeline_ = VK_NULL_HANDLE;
     }
 
     if (text_pipeline_layout_ != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(device_, text_pipeline_layout_, nullptr);
+        vkDestroyPipelineLayout(device(), text_pipeline_layout_, nullptr);
         text_pipeline_layout_ = VK_NULL_HANDLE;
     }
 
     if (graphics_pipeline_ != VK_NULL_HANDLE) {
-        vkDestroyPipeline(device_, graphics_pipeline_, nullptr);
+        vkDestroyPipeline(device(), graphics_pipeline_, nullptr);
         graphics_pipeline_ = VK_NULL_HANDLE;
     }
 
     if (pipeline_layout_ != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
+        vkDestroyPipelineLayout(device(), pipeline_layout_, nullptr);
         pipeline_layout_ = VK_NULL_HANDLE;
     }
-
-    for (VkFramebuffer framebuffer : framebuffers_) {
-        vkDestroyFramebuffer(device_, framebuffer, nullptr);
+    if (swapchain_ != nullptr) {
+        swapchain_->rebuild_framebuffers(device(), VK_NULL_HANDLE);
     }
-    framebuffers_.clear();
 
     if (!command_buffers_.empty() && command_pool_ != VK_NULL_HANDLE) {
-        vkFreeCommandBuffers(device_, command_pool_, static_cast<uint32_t>(command_buffers_.size()), command_buffers_.data());
+        vkFreeCommandBuffers(device(), command_pool_, static_cast<uint32_t>(command_buffers_.size()), command_buffers_.data());
         command_buffers_.clear();
     }
 
     if (render_pass_ != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(device_, render_pass_, nullptr);
+        vkDestroyRenderPass(device(), render_pass_, nullptr);
         render_pass_ = VK_NULL_HANDLE;
-    }
-
-    for (VkImageView image_view : swapchain_image_views_) {
-        vkDestroyImageView(device_, image_view, nullptr);
-    }
-    swapchain_image_views_.clear();
-
-    if (swapchain_ != VK_NULL_HANDLE) {
-        vkDestroySwapchainKHR(device_, swapchain_, nullptr);
-        swapchain_ = VK_NULL_HANDLE;
     }
 }
 
 void VulkanRenderer::recreate_swapchain() {
-    int width = 0;
-    int height = 0;
-    do {
-        SDL_GetWindowSizeInPixels(window_, &width, &height);
-        if (width == 0 || height == 0) {
-            SDL_WaitEvent(nullptr);
-        }
-    } while (width == 0 || height == 0);
-
-    vkDeviceWaitIdle(device_);
-    cleanup_swapchain();
-    create_swapchain();
-    create_image_views();
+    vkDeviceWaitIdle(device());
+    cleanup_swapchain_dependent_state();
+    swapchain_->recreate(*context_, window_, VK_NULL_HANDLE);
     create_render_pass();
     create_graphics_pipeline();
     create_text_pipeline();
-    create_framebuffers();
+    swapchain_->rebuild_framebuffers(device(), render_pass_);
     create_command_buffers();
     text_dirty_ = true;
 }
 
 void VulkanRenderer::update_text_vertices() {
-    if (text_vertex_buffer_ == VK_NULL_HANDLE || swapchain_extent_.width == 0 || swapchain_extent_.height == 0) {
+    const VkExtent2D extent = swapchain_state().extent();
+    if (text_vertex_buffer_ == VK_NULL_HANDLE || extent.width == 0 || extent.height == 0) {
         text_vertex_count_ = 0;
         text_dirty_ = false;
         return;
@@ -1233,8 +919,8 @@ void VulkanRenderer::update_text_vertices() {
     constexpr float glyph_height = kDebugFontCharacterSize * glyph_scale;
     constexpr float line_gap = 6.0f;
 
-    const float available_width = std::max(1.0f, static_cast<float>(swapchain_extent_.width) - margin_x * 2.0f);
-    const float available_height = std::max(1.0f, static_cast<float>(swapchain_extent_.height) - margin_y * 2.0f);
+    const float available_width = std::max(1.0f, static_cast<float>(extent.width) - margin_x * 2.0f);
+    const float available_height = std::max(1.0f, static_cast<float>(extent.height) - margin_y * 2.0f);
     const uint32_t max_columns = std::max(1u, static_cast<uint32_t>(available_width / glyph_width));
     const uint32_t max_lines = std::max(1u, static_cast<uint32_t>(available_height / (glyph_height + line_gap)));
 
@@ -1251,10 +937,10 @@ void VulkanRenderer::update_text_vertices() {
     };
 
     auto to_ndc_x = [&](float pixel_x) {
-        return (pixel_x / static_cast<float>(swapchain_extent_.width)) * 2.0f - 1.0f;
+        return (pixel_x / static_cast<float>(extent.width)) * 2.0f - 1.0f;
     };
     auto to_ndc_y = [&](float pixel_y) {
-        return 1.0f - (pixel_y / static_cast<float>(swapchain_extent_.height)) * 2.0f;
+        return 1.0f - (pixel_y / static_cast<float>(extent.height)) * 2.0f;
     };
 
     uint32_t column = 0;
@@ -1343,9 +1029,9 @@ void VulkanRenderer::update_text_vertices() {
 
     void* mapped_data = nullptr;
     const VkDeviceSize upload_size = static_cast<VkDeviceSize>(vertices.size() * sizeof(TextVertex));
-    check_vk(vkMapMemory(device_, text_vertex_buffer_memory_, 0, upload_size, 0, &mapped_data), "Failed to map text vertex buffer");
+    check_vk(vkMapMemory(device(), text_vertex_buffer_memory_, 0, upload_size, 0, &mapped_data), "Failed to map text vertex buffer");
     std::memcpy(mapped_data, vertices.data(), static_cast<size_t>(upload_size));
-    vkUnmapMemory(device_, text_vertex_buffer_memory_);
+    vkUnmapMemory(device(), text_vertex_buffer_memory_);
 
     text_dirty_ = false;
 }
@@ -1360,9 +1046,9 @@ void VulkanRenderer::record_command_buffer(VkCommandBuffer command_buffer, uint3
     VkRenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     render_pass_info.renderPass = render_pass_;
-    render_pass_info.framebuffer = framebuffers_[image_index];
+    render_pass_info.framebuffer = swapchain_state().framebuffers()[image_index];
     render_pass_info.renderArea.offset = {0, 0};
-    render_pass_info.renderArea.extent = swapchain_extent_;
+    render_pass_info.renderArea.extent = swapchain_state().extent();
     render_pass_info.clearValueCount = 1;
     render_pass_info.pClearValues = &clear_color;
 
@@ -1396,7 +1082,7 @@ void VulkanRenderer::record_command_buffer(VkCommandBuffer command_buffer, uint3
 }
 
 bool VulkanRenderer::begin_frame(uint32_t& image_index) {
-    if (!initialized_ || device_ == VK_NULL_HANDLE || swapchain_ == VK_NULL_HANDLE) {
+    if (!initialized_ || device() == VK_NULL_HANDLE || swapchain_ == nullptr || swapchain_->swapchain() == VK_NULL_HANDLE) {
         return false;
     }
 
@@ -1404,11 +1090,11 @@ bool VulkanRenderer::begin_frame(uint32_t& image_index) {
         update_text_vertices();
     }
 
-    check_vk(vkWaitForFences(device_, 1, &in_flight_fences_[current_frame_], VK_TRUE, UINT64_MAX), "Failed to wait for in-flight fence");
+    check_vk(vkWaitForFences(device(), 1, &in_flight_fences_[current_frame_], VK_TRUE, UINT64_MAX), "Failed to wait for in-flight fence");
 
     const VkResult acquire_result = vkAcquireNextImageKHR(
-        device_,
-        swapchain_,
+        device(),
+        swapchain_->swapchain(),
         UINT64_MAX,
         image_available_semaphores_[current_frame_],
         VK_NULL_HANDLE,
@@ -1423,7 +1109,7 @@ bool VulkanRenderer::begin_frame(uint32_t& image_index) {
         fail("Failed to acquire swapchain image");
     }
 
-    check_vk(vkResetFences(device_, 1, &in_flight_fences_[current_frame_]), "Failed to reset in-flight fence");
+    check_vk(vkResetFences(device(), 1, &in_flight_fences_[current_frame_]), "Failed to reset in-flight fence");
     check_vk(vkResetCommandBuffer(command_buffers_[image_index], 0), "Failed to reset command buffer");
     return true;
 }
@@ -1447,9 +1133,9 @@ void VulkanRenderer::submit_frame(uint32_t image_index) {
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = signal_semaphores;
 
-    check_vk(vkQueueSubmit(graphics_queue_, 1, &submit_info, in_flight_fences_[current_frame_]), "Failed to submit draw command buffer");
+    check_vk(vkQueueSubmit(graphics_queue(), 1, &submit_info, in_flight_fences_[current_frame_]), "Failed to submit draw command buffer");
 
-    VkSwapchainKHR swapchains[] = {swapchain_};
+    VkSwapchainKHR swapchains[] = {swapchain_->swapchain()};
     VkPresentInfoKHR present_info{};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     present_info.waitSemaphoreCount = 1;
@@ -1458,7 +1144,7 @@ void VulkanRenderer::submit_frame(uint32_t image_index) {
     present_info.pSwapchains = swapchains;
     present_info.pImageIndices = &image_index;
 
-    const VkResult present_result = vkQueuePresentKHR(present_queue_, &present_info);
+    const VkResult present_result = vkQueuePresentKHR(present_queue(), &present_info);
     if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR || framebuffer_resized_) {
         framebuffer_resized_ = false;
         recreate_swapchain();
@@ -1477,4 +1163,28 @@ void VulkanRenderer::draw_frame() {
 
     record_frame(image_index);
     submit_frame(image_index);
+}
+
+VkDevice VulkanRenderer::device() const {
+    return context_ != nullptr ? context_->device() : VK_NULL_HANDLE;
+}
+
+VkPhysicalDevice VulkanRenderer::physical_device() const {
+    return context_ != nullptr ? context_->physical_device() : VK_NULL_HANDLE;
+}
+
+VkQueue VulkanRenderer::graphics_queue() const {
+    return context_ != nullptr ? context_->graphics_queue() : VK_NULL_HANDLE;
+}
+
+VkQueue VulkanRenderer::present_queue() const {
+    return context_ != nullptr ? context_->present_queue() : VK_NULL_HANDLE;
+}
+
+const gpu::SwapchainManager & VulkanRenderer::swapchain_state() const {
+    return *swapchain_;
+}
+
+gpu::SwapchainManager & VulkanRenderer::swapchain_state() {
+    return *swapchain_;
 }

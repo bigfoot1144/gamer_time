@@ -2,7 +2,11 @@
 
 #include "common.h"
 
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace gpu {
@@ -25,20 +29,12 @@ struct SwapchainSupportDetails {
 
 class VulkanContext {
 public:
+    void initialize(SDL_Window * window);
+    void shutdown();
     void reset();
 
     QueueFamilyIndices find_queue_families(VkPhysicalDevice physical_device, VkSurfaceKHR surface) const;
     SwapchainSupportDetails query_swapchain_support(VkPhysicalDevice physical_device, VkSurfaceKHR surface) const;
-
-    void bind_legacy_handles(
-        VkInstance instance,
-        VkSurfaceKHR surface,
-        VkPhysicalDevice physical_device,
-        VkDevice device,
-        VkQueue graphics_queue,
-        VkQueue present_queue,
-        VkQueue compute_queue
-    );
 
     VkInstance instance() const { return instance_; }
     VkSurfaceKHR surface() const { return surface_; }
@@ -56,6 +52,13 @@ private:
     VkQueue graphics_queue_ = VK_NULL_HANDLE;
     VkQueue present_queue_ = VK_NULL_HANDLE;
     VkQueue compute_queue_ = VK_NULL_HANDLE;
+
+    void create_instance();
+    void create_surface(SDL_Window * window);
+    void pick_physical_device();
+    void create_logical_device();
+    bool check_device_extension_support(VkPhysicalDevice physical_device) const;
+    bool is_device_suitable(VkPhysicalDevice physical_device) const;
 };
 
 } // namespace gpu

@@ -1,19 +1,20 @@
 #include "render/scene_renderer.h"
 
 void SceneRenderer::initialize(SDL_Window * window, const std::string & shader_dir) {
-    context_.reset();
+    context_.shutdown();
     swapchain_.reset();
     resources_.reset();
     resources_.initialize_placeholders();
     text_overlay_ = TextOverlayRenderer{};
-    legacy_renderer_.init(window, shader_dir);
+    context_.initialize(window);
+    legacy_renderer_.init(window, shader_dir, context_, swapchain_);
 }
 
 void SceneRenderer::shutdown() {
     legacy_renderer_.shutdown();
     resources_.reset();
-    swapchain_.reset();
-    context_.reset();
+    swapchain_.shutdown(context_.device());
+    context_.shutdown();
 }
 
 void SceneRenderer::request_resize() {
