@@ -237,7 +237,7 @@ Goal: wire the full runtime so each box in `diagram.md` has a concrete code owne
 - [x] Build instance batches
 - [x] Upload instance data
 - [x] Upload fog mask
-- [ ] Record and submit graphics work
+- [x] Record and submit graphics work
 - [ ] Route AI token output into overlay text or unit barks
 - [x] Remove the old `App` class
 - [ ] Remove or reduce the old monolithic `VulkanRenderer`
@@ -253,7 +253,7 @@ Goal: wire the full runtime so each box in `diagram.md` has a concrete code owne
 Exit criteria:
 
 - [ ] The runtime structure follows the diagram closely
-- [ ] Main thread owns SDL, simulation, visibility, render extraction, and frame submission
+- [x] Main thread owns SDL, simulation, visibility, render extraction, and frame submission
 - [ ] Worker thread owns inference only
 - [ ] Renderer consumes extracted frame data, not game state
 - [ ] GPU module owns Vulkan handles and persistent VRAM resources

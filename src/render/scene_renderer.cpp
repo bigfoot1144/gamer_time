@@ -38,7 +38,13 @@ void SceneRenderer::upload_frame_resources(
 }
 
 void SceneRenderer::draw_frame() {
-    legacy_renderer_.draw_frame();
+    uint32_t image_index = 0;
+    if (!legacy_renderer_.begin_frame(image_index)) {
+        return;
+    }
+
+    legacy_renderer_.record_frame(image_index);
+    legacy_renderer_.submit_frame(image_index);
 }
 
 void SceneRenderer::wait_idle() {

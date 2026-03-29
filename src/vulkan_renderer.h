@@ -37,6 +37,9 @@ public:
     void on_window_resized();
     void request_resize() { framebuffer_resized_ = true; }
     void set_overlay_text(std::string text);
+    bool begin_frame(uint32_t& image_index);
+    void record_frame(uint32_t image_index);
+    void submit_frame(uint32_t image_index);
     void draw_frame();
     void wait_idle();
 

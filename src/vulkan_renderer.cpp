@@ -1395,9 +1395,9 @@ void VulkanRenderer::record_command_buffer(VkCommandBuffer command_buffer, uint3
     check_vk(vkEndCommandBuffer(command_buffer), "Failed to record command buffer");
 }
 
-void VulkanRenderer::draw_frame() {
+bool VulkanRenderer::begin_frame(uint32_t& image_index) {
     if (!initialized_ || device_ == VK_NULL_HANDLE || swapchain_ == VK_NULL_HANDLE) {
-        return;
+        return false;
     }
 
     if (text_dirty_) {
@@ -1406,7 +1406,6 @@ void VulkanRenderer::draw_frame() {
 
     check_vk(vkWaitForFences(device_, 1, &in_flight_fences_[current_frame_], VK_TRUE, UINT64_MAX), "Failed to wait for in-flight fence");
 
-    uint32_t image_index = 0;
     const VkResult acquire_result = vkAcquireNextImageKHR(
         device_,
         swapchain_,
@@ -1418,7 +1417,7 @@ void VulkanRenderer::draw_frame() {
 
     if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
         recreate_swapchain();
-        return;
+        return false;
     }
     if (acquire_result != VK_SUCCESS && acquire_result != VK_SUBOPTIMAL_KHR) {
         fail("Failed to acquire swapchain image");
@@ -1426,8 +1425,14 @@ void VulkanRenderer::draw_frame() {
 
     check_vk(vkResetFences(device_, 1, &in_flight_fences_[current_frame_]), "Failed to reset in-flight fence");
     check_vk(vkResetCommandBuffer(command_buffers_[image_index], 0), "Failed to reset command buffer");
-    record_command_buffer(command_buffers_[image_index], image_index);
+    return true;
+}
 
+void VulkanRenderer::record_frame(uint32_t image_index) {
+    record_command_buffer(command_buffers_[image_index], image_index);
+}
+
+void VulkanRenderer::submit_frame(uint32_t image_index) {
     VkSemaphore wait_semaphores[] = {image_available_semaphores_[current_frame_]};
     VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     VkSemaphore signal_semaphores[] = {render_finished_semaphores_[current_frame_]};
@@ -1462,4 +1467,14 @@ void VulkanRenderer::draw_frame() {
     }
 
     current_frame_ = (current_frame_ + 1) % kMaxFramesInFlight;
+}
+
+void VulkanRenderer::draw_frame() {
+    uint32_t image_index = 0;
+    if (!begin_frame(image_index)) {
+        return;
+    }
+
+    record_frame(image_index);
+    submit_frame(image_index);
 }
