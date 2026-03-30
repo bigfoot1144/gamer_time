@@ -1,5 +1,7 @@
 #include "app/application.h"
 
+#include "game/map_world.h"
+
 #include <algorithm>
 #include <sstream>
 #include <utility>
@@ -42,7 +44,7 @@ void Application::initialize() {
     platform_.initialize(config_);
     scene_renderer_.initialize(platform_.window(), config_.shader_dir);
     const TmxMapAsset map_asset = assets::load_tmx_map(kDefaultMapPath);
-    world_.set_terrain(assets::build_flattened_tile_map_from_tmx(map_asset));
+    world_.set_map(MapWorld::from_tmx(map_asset));
     scene_atlas_ = assets::build_atlas_from_tmx(map_asset, assets::resolve_tmx_tileset_image_path(map_asset));
     scene_atlas_image_ = assets::load_png_rgba(scene_atlas_.image_path);
     scene_atlas_.columns = scene_atlas_image_.width / scene_atlas_.tile_width;
@@ -131,7 +133,7 @@ void Application::update_window_title(const RenderBatch & batch) const {
     std::string title = "gamer_time | units: ";
     title += std::to_string(world_.unit_count());
     title += " | tiles: ";
-    title += std::to_string(world_.terrain().tile_count());
+    title += std::to_string(world_.map().total_tile_count());
     title += " | visible: ";
     title += std::to_string(batch.unit_instance_count);
     title += " | selected: ";
@@ -154,7 +156,9 @@ std::string Application::build_overlay_text() const {
     overlay << "GAMER_TIME RTS FRAMEWORK\n";
     overlay << "ESC quit | SPACE rerun prompt | click select | right click move | WASD/Arrows pan | wheel zoom\n\n";
     overlay << "Units: " << world_.unit_count() << '\n';
-    overlay << "Terrain tiles: " << world_.terrain().tile_count() << '\n';
+    overlay << "Tile layers: " << world_.map().tile_layers().size() << '\n';
+    overlay << "Terrain tiles: " << world_.map().total_tile_count() << '\n';
+    overlay << "Collision polygons: " << world_.map().collision_polygons().size() << '\n';
     overlay << "Selected: " << world_.selected_units().size() << '\n';
     overlay << "Camera: (" << static_cast<int>(camera.world_center.x) << ", " << static_cast<int>(camera.world_center.y) << ") zoom " << camera.zoom << "\n";
     overlay << "Fog cells visible: " << std::count(world_.fog_mask().begin(), world_.fog_mask().end(), static_cast<std::uint8_t>(255)) << "\n";

@@ -10,16 +10,24 @@ void FrustumCuller::run(RenderWorld & render_world, int window_width, int window
     const float min_y = render_world.camera.world_center.y - half_height;
     const float max_y = render_world.camera.world_center.y + half_height;
 
-    std::vector<RenderTile> visible_tiles;
-    visible_tiles.reserve(render_world.terrain_tiles.size());
-    for (const RenderTile & tile : render_world.terrain_tiles) {
-        if (tile.world_pos.x + tile.size.x < min_x || tile.world_pos.x - tile.size.x > max_x) {
-            continue;
+    std::vector<RenderTileLayer> visible_layers;
+    visible_layers.reserve(render_world.terrain_layers.size());
+    for (const RenderTileLayer & layer : render_world.terrain_layers) {
+        RenderTileLayer visible_layer = layer;
+        visible_layer.tiles.clear();
+        visible_layer.tiles.reserve(layer.tiles.size());
+
+        for (const RenderTile & tile : layer.tiles) {
+            if (tile.world_pos.x + tile.size.x < min_x || tile.world_pos.x - tile.size.x > max_x) {
+                continue;
+            }
+            if (tile.world_pos.y + tile.size.y < min_y || tile.world_pos.y - tile.size.y > max_y) {
+                continue;
+            }
+            visible_layer.tiles.push_back(tile);
         }
-        if (tile.world_pos.y + tile.size.y < min_y || tile.world_pos.y - tile.size.y > max_y) {
-            continue;
-        }
-        visible_tiles.push_back(tile);
+
+        visible_layers.push_back(std::move(visible_layer));
     }
 
     std::vector<RenderUnit> visible_units;
@@ -35,6 +43,6 @@ void FrustumCuller::run(RenderWorld & render_world, int window_width, int window
         visible_units.push_back(unit);
     }
 
-    render_world.terrain_tiles = std::move(visible_tiles);
+    render_world.terrain_layers = std::move(visible_layers);
     render_world.units = std::move(visible_units);
 }

@@ -2,7 +2,7 @@
 
 #include "game/command_queue.h"
 #include "game/components.h"
-#include "game/tile_map.h"
+#include "game/map_world.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +13,7 @@ public:
     World();
 
     void seed_test_units();
-    void set_terrain(TileMap terrain);
+    void set_map(MapWorld map);
 
     UnitId create_unit(
         TransformComponent transform,
@@ -66,12 +66,12 @@ public:
         return fog_height_;
     }
 
-    const TileMap & terrain() const {
-        return terrain_;
+    const MapWorld & map() const {
+        return map_;
     }
 
-    TileMap & terrain() {
-        return terrain_;
+    MapWorld & map() {
+        return map_;
     }
 
 private:
@@ -87,5 +87,5 @@ private:
     std::vector<std::uint8_t> fog_mask_;
     std::uint32_t fog_width_ = 64;
     std::uint32_t fog_height_ = 64;
-    TileMap terrain_;
+    MapWorld map_;
 };

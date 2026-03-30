@@ -23,6 +23,20 @@ struct RenderTile {
     std::uint32_t atlas_index = 0;
 };
 
+struct RenderTileLayer {
+    std::string name;
+    bool visible = true;
+    bool renderable = true;
+    float opacity = 1.0f;
+    std::vector<RenderTile> tiles;
+};
+
+struct RenderTileLayerRange {
+    std::uint32_t instance_offset = 0;
+    std::uint32_t instance_count = 0;
+    float opacity = 1.0f;
+};
+
 struct ProjectedUnit {
     RenderUnit source{};
     Vec2f screen_pos{};
@@ -34,10 +48,12 @@ struct InstanceData {
     Vec2f size{24.0f, 24.0f};
     std::uint32_t sprite_index = 0;
     std::uint32_t flags = 0;
+    float opacity = 1.0f;
 };
 
 struct RenderBatch {
     std::vector<InstanceData> instances;
+    std::vector<RenderTileLayerRange> terrain_layer_ranges;
     std::uint32_t terrain_instance_offset = 0;
     std::uint32_t terrain_instance_count = 0;
     std::uint32_t unit_instance_offset = 0;
@@ -46,7 +62,7 @@ struct RenderBatch {
 
 struct RenderWorld {
     CameraState camera{};
-    std::vector<RenderTile> terrain_tiles;
+    std::vector<RenderTileLayer> terrain_layers;
     std::vector<RenderUnit> units;
     std::vector<ProjectedUnit> projected_units;
     std::string overlay_text;

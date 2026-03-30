@@ -12,8 +12,8 @@ World::World()
     : fog_mask_(static_cast<std::size_t>(kFogWidth * kFogHeight), 0) {
 }
 
-void World::set_terrain(TileMap terrain) {
-    terrain_ = std::move(terrain);
+void World::set_map(MapWorld map) {
+    map_ = std::move(map);
 }
 
 void World::seed_test_units() {

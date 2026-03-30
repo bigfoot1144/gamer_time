@@ -389,13 +389,14 @@ void SceneRenderer::create_graphics_pipeline() {
     binding_descriptions[1].stride = sizeof(InstanceData);
     binding_descriptions[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 
-    std::array<VkVertexInputAttributeDescription, 6> attribute_descriptions{};
+    std::array<VkVertexInputAttributeDescription, 7> attribute_descriptions{};
     attribute_descriptions[0] = {0, 0, VK_FORMAT_R32G32_SFLOAT, 0};
     attribute_descriptions[1] = {1, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 2};
     attribute_descriptions[2] = {2, 1, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(InstanceData, world_pos))};
     attribute_descriptions[3] = {3, 1, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(InstanceData, size))};
     attribute_descriptions[4] = {4, 1, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(InstanceData, sprite_index))};
     attribute_descriptions[5] = {5, 1, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(InstanceData, flags))};
+    attribute_descriptions[6] = {6, 1, VK_FORMAT_R32_SFLOAT, static_cast<uint32_t>(offsetof(InstanceData, opacity))};
 
     vertex_input_info.vertexBindingDescriptionCount = 2;
     vertex_input_info.pVertexBindingDescriptions = binding_descriptions;
@@ -443,7 +444,13 @@ void SceneRenderer::create_graphics_pipeline() {
         VK_COLOR_COMPONENT_G_BIT |
         VK_COLOR_COMPONENT_B_BIT |
         VK_COLOR_COMPONENT_A_BIT;
-    color_blend_attachment.blendEnable = VK_FALSE;
+    color_blend_attachment.blendEnable = VK_TRUE;
+    color_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    color_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+    color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
 
     VkPipelineColorBlendStateCreateInfo color_blending{};
     color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -623,8 +630,11 @@ void SceneRenderer::record_command_buffer(VkCommandBuffer command_buffer, uint32
         &push_constants
     );
 
-    if (batch_.terrain_instance_count > 0) {
-        vkCmdDrawIndexed(command_buffer, 6, batch_.terrain_instance_count, 0, 0, static_cast<int32_t>(batch_.terrain_instance_offset));
+    for (const RenderTileLayerRange & range : batch_.terrain_layer_ranges) {
+        if (range.instance_count == 0) {
+            continue;
+        }
+        vkCmdDrawIndexed(command_buffer, 6, range.instance_count, 0, 0, static_cast<int32_t>(range.instance_offset));
     }
     if (batch_.unit_instance_count > 0) {
         vkCmdDrawIndexed(command_buffer, 6, batch_.unit_instance_count, 0, 0, static_cast<int32_t>(batch_.unit_instance_offset));

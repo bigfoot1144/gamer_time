@@ -128,17 +128,17 @@ This is the key scalability rule for future map concepts such as:
 
 Goal: parse TMX as structured authored data instead of flattening to a single visible tile per cell.
 
-- [ ] Replace the current flattened TMX runtime shortcut with a full `TmxMapAsset`
-- [ ] Add support for these TMX concepts in `src/assets/tmx_map_loader.*`
-- [ ] Parse map metadata
-- [ ] Parse tilesets
-- [ ] Parse tile layers
-- [ ] Parse object groups
-- [ ] Parse objects
-- [ ] Parse object polygons
-- [ ] Parse generic properties on map, layer, tileset, and object nodes
-- [ ] Preserve raw names, ids, visibility flags, opacity, and custom properties
-- [ ] Preserve layer ordering exactly as authored in TMX
+- [x] Replace the current flattened TMX runtime shortcut with a full `TmxMapAsset`
+- [x] Add support for these TMX concepts in `src/assets/tmx_map_loader.*`
+- [x] Parse map metadata
+- [x] Parse tilesets
+- [x] Parse tile layers
+- [x] Parse object groups
+- [x] Parse objects
+- [x] Parse object polygons
+- [x] Parse generic properties on map, layer, tileset, and object nodes
+- [x] Preserve raw names, ids, visibility flags, opacity, and custom properties
+- [x] Preserve layer ordering exactly as authored in TMX
 
 Recommended data types:
 
@@ -152,25 +152,25 @@ Recommended data types:
 
 Exit criteria:
 
-- [ ] The full authored TMX structure is available in memory
-- [ ] No map data is lost just because the engine does not use it yet
-- [ ] Tile layers are preserved as ordered tile layers, not collapsed by names
-- [ ] The loader can read the current `collision` polygon object group without special-casing it away
+- [x] The full authored TMX structure is available in memory
+- [x] No map data is lost just because the engine does not use it yet
+- [x] Tile layers are preserved as ordered tile layers, not collapsed by names
+- [x] The loader can read the current `collision` polygon object group without special-casing it away
 
 ## Phase 2: Introduce Runtime Map Domain Types
 
 Goal: separate parsed TMX data from runtime world data.
 
-- [ ] Add `src/game/map_world.h/.cpp`
-- [ ] Define runtime map types distinct from raw TMX XML types
-- [ ] Add `MapWorld`
-- [ ] Add `TileLayer`
-- [ ] Add `ObjectLayer`
-- [ ] Add `MapObject`
-- [ ] Add `CollisionPolygon`
-- [ ] Add generic property storage
-- [ ] Add a conversion step from `TmxMapAsset` to `MapWorld`
-- [ ] Store unknown layers and unknown objects in `MapWorld` even if no system consumes them yet
+- [x] Add `src/game/map_world.h/.cpp`
+- [x] Define runtime map types distinct from raw TMX XML types
+- [x] Add `MapWorld`
+- [x] Add `TileLayer`
+- [x] Add `ObjectLayer`
+- [x] Add `MapObject`
+- [x] Add `CollisionPolygon`
+- [x] Add generic property storage
+- [x] Add a conversion step from `TmxMapAsset` to `MapWorld`
+- [x] Store unknown layers and unknown objects in `MapWorld` even if no system consumes them yet
 
 Recommended shape:
 
@@ -181,41 +181,41 @@ Recommended shape:
 
 Exit criteria:
 
-- [ ] The game runtime owns a full map domain model
-- [ ] Runtime systems no longer depend on a flattened tile map shortcut
-- [ ] Tile layers remain generic ordered layers
-- [ ] Known and unknown TMX content are both preserved
+- [x] The game runtime owns a full map domain model
+- [x] Runtime systems no longer depend on a flattened tile map shortcut
+- [x] Tile layers remain generic ordered layers
+- [x] Known and unknown TMX content are both preserved
 
 ## Phase 3: World Ownership And Startup Wiring
 
 Goal: make TMX the default world source.
 
-- [ ] Add `MapWorld` ownership to `World`
-- [ ] Remove placeholder terrain seeding completely
-- [ ] Load the default TMX map in application startup
-- [ ] Resolve the default tileset image from TMX rather than from hardcoded sample atlas paths
-- [ ] Keep startup resilient: fail loudly for malformed required content, ignore unknown optional content
-- [ ] Keep unit seeding separate from map loading for now unless units are also moved into TMX later
+- [x] Add `MapWorld` ownership to `World`
+- [x] Remove placeholder terrain seeding completely
+- [x] Load the default TMX map in application startup
+- [x] Resolve the default tileset image from TMX rather than from hardcoded sample atlas paths
+- [x] Keep startup resilient: fail loudly for malformed required content, ignore unknown optional content
+- [x] Keep unit seeding separate from map loading for now unless units are also moved into TMX later
 
 Exit criteria:
 
-- [ ] The engine boots from TMX by default
-- [ ] The map is no longer authored in C++ loops
-- [ ] The placeholder map path is gone
+- [x] The engine boots from TMX by default
+- [x] The map is no longer authored in C++ loops
+- [x] The placeholder map path is gone
 
 ## Phase 4: Multi-Layer Terrain Rendering
 
 Goal: render tile layers as authored instead of flattening them.
 
-- [ ] Extend render-side data structures to support multiple tile layers
-- [ ] Preserve authoring order from TMX
-- [ ] Add a renderable flag per tile layer
-- [ ] Add a visibility flag per tile layer
-- [ ] Add per-layer opacity support
+- [x] Extend render-side data structures to support multiple tile layers
+- [x] Preserve authoring order from TMX
+- [x] Add a renderable flag per tile layer
+- [x] Add a visibility flag per tile layer
+- [x] Add per-layer opacity support
 - [ ] Add optional future layer tint support
-- [ ] Update extraction to emit tiles per layer
-- [ ] Update batching to preserve layer ranges
-- [ ] Draw tile layers in authored order before units unless a future explicit property changes that
+- [x] Update extraction to emit tiles per layer
+- [x] Update batching to preserve layer ranges
+- [x] Draw tile layers in authored order before units unless a future explicit property changes that
 
 Recommended render model:
 
@@ -225,22 +225,22 @@ Recommended render model:
 
 Exit criteria:
 
-- [ ] All authored tile layers render as separate generic layers
-- [ ] Layer 0 draws first, then layer 1, then layer 2, and so on
-- [ ] Later tile layers draw on top of earlier tile layers
-- [ ] Layer order matches Tiled authoring order
-- [ ] The renderer no longer depends on a topmost-nonzero flattening rule
+- [x] All authored tile layers render as separate generic layers
+- [x] Layer 0 draws first, then layer 1, then layer 2, and so on
+- [x] Later tile layers draw on top of earlier tile layers
+- [x] Layer order matches Tiled authoring order
+- [x] The renderer no longer depends on a topmost-nonzero flattening rule
 
 ## Phase 5: Generic Layer Semantics
 
 Goal: let TMX content exist without forcing hardcoded tile-layer names into the renderer or gameplay.
 
-- [ ] Treat tile layers generically by authored order, not by name
-- [ ] Default tile layers to renderable ordered content
-- [ ] Do not require tile layers to have semantic names
-- [ ] Do not derive tile rendering behavior from names like `Paths` or `Grass Dark`
+- [x] Treat tile layers generically by authored order, not by name
+- [x] Default tile layers to renderable ordered content
+- [x] Do not require tile layers to have semantic names
+- [x] Do not derive tile rendering behavior from names like `Paths` or `Grass Dark`
 - [ ] Derive gameplay semantics from object groups, objects, and explicit properties instead
-- [ ] Never require every authored layer to have engine behavior
+- [x] Never require every authored layer to have engine behavior
 
 Recommended approach:
 
@@ -258,36 +258,36 @@ Recommended approach:
 
 Exit criteria:
 
-- [ ] Tile layer names are not required for rendering behavior
-- [ ] Unknown tile layer names still load safely
-- [ ] Rendering remains stable even if tile layers are renamed in Tiled
-- [ ] Future map content can be added without loader rewrites
+- [x] Tile layer names are not required for rendering behavior
+- [x] Unknown tile layer names still load safely
+- [x] Rendering remains stable even if tile layers are renamed in Tiled
+- [x] Future map content can be added without loader rewrites
 
 ## Phase 6: Object Layer And Polygon Support
 
 Goal: ingest object layers generically and support the current collision polygon case.
 
-- [ ] Parse object groups from TMX
-- [ ] Parse object ids, names, types/classes, visibility, position, size, rotation
-- [ ] Parse polygons as local point lists
-- [ ] Convert polygon local points to world-space polygon geometry
-- [ ] Preserve raw object metadata and properties even when no system consumes them
+- [x] Parse object groups from TMX
+- [x] Parse object ids, names, types/classes, visibility, position, size, rotation
+- [x] Parse polygons as local point lists
+- [x] Convert polygon local points to world-space polygon geometry
+- [x] Preserve raw object metadata and properties even when no system consumes them
 - [ ] Add support for rectangle and point objects as future-ready baseline shapes
-- [ ] Allow object groups and objects to have specific authored names such as `collision`, `lava`, `water`, or `boundary`
+- [x] Allow object groups and objects to have specific authored names such as `collision`, `lava`, `water`, or `boundary`
 - [ ] Let these names and properties drive optional engine behavior
-- [ ] Do nothing for object groups or objects the engine does not implement yet
+- [x] Do nothing for object groups or objects the engine does not implement yet
 
 For the current map:
 
-- [ ] Load object group `collision`
-- [ ] Load the polygon object inside it
-- [ ] Convert it into world-space geometry
+- [x] Load object group `collision`
+- [x] Load the polygon object inside it
+- [x] Convert it into world-space geometry
 
 Exit criteria:
 
-- [ ] The current collision polygon loads successfully
-- [ ] Object layers are available to runtime systems
-- [ ] Unused object groups still load and do nothing
+- [x] The current collision polygon loads successfully
+- [x] Object layers are available to runtime systems
+- [x] Unused object groups still load and do nothing
 
 ## Phase 7: Collision Runtime Integration
 

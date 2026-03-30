@@ -16,6 +16,7 @@ layout(location = 1) in vec2 vWorldPos;
 layout(location = 2) flat in uint vSpriteIndex;
 layout(location = 3) flat in uint vFlags;
 layout(location = 4) in vec2 vAtlasUv;
+layout(location = 5) in float vOpacity;
 layout(location = 0) out vec4 outColor;
 
 vec3 fallback_color(uint spriteIndex) {
@@ -37,12 +38,13 @@ void main() {
     );
     float fogValue = texture(uFogMask, fogUv).r;
 
-    vec3 color = atlasColor.a > 0.01 ? atlasColor.rgb : fallback_color(vSpriteIndex);
+    vec3 color = atlasColor.rgb;
     if ((vFlags & 1u) != 0u) {
         float highlight = smoothstep(0.15, 0.85, 1.0 - distance(vUv, vec2(0.5)));
         color = mix(color, vec3(1.0, 0.9, 0.2), 0.35 * highlight);
     }
 
     color *= mix(0.85, 1.0, fogValue);
-    outColor = vec4(color, max(atlasColor.a, 1.0));
+    float alpha = atlasColor.a * clamp(vOpacity, 0.0, 1.0);
+    outColor = vec4(color, alpha);
 }

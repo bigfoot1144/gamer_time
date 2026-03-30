@@ -1,5 +1,6 @@
 #include "render/render_extractor.h"
 
+#include "game/map_world.h"
 #include "game/world.h"
 
 RenderWorld RenderExtractor::build(
@@ -21,16 +22,36 @@ RenderWorld RenderExtractor::build(
         }
     }
 
-    const TileMap & terrain = world.terrain();
-    render_world.terrain_tiles.reserve(terrain.tile_count());
-    for (std::uint32_t y = 0; y < terrain.height(); ++y) {
-        for (std::uint32_t x = 0; x < terrain.width(); ++x) {
-            RenderTile tile{};
-            tile.world_pos = terrain.cell_center_world(x, y);
-            tile.size = terrain.tile_size();
-            tile.atlas_index = terrain.atlas_index_at(x, y);
-            render_world.terrain_tiles.push_back(tile);
+    const MapWorld & map = world.map();
+    render_world.terrain_layers.reserve(map.tile_layers().size());
+    for (const TileLayer & layer : map.tile_layers()) {
+        RenderTileLayer render_layer{};
+        render_layer.name = layer.name;
+        render_layer.visible = layer.visible;
+        render_layer.renderable = layer.renderable;
+        render_layer.opacity = layer.opacity;
+        render_layer.tiles.reserve(layer.tile_count());
+
+        for (std::uint32_t y = 0; y < layer.height; ++y) {
+            for (std::uint32_t x = 0; x < layer.width; ++x) {
+                const std::uint32_t atlas_index = layer.atlas_index_at(x, y, kEmptyAtlasIndex);
+                if (atlas_index == kEmptyAtlasIndex) {
+                    continue;
+                }
+
+                const float world_y = map.origin().y + (static_cast<float>(layer.height - 1 - y) + 0.5f) * map.tile_size().y;
+                RenderTile tile{};
+                tile.world_pos = {
+                    map.origin().x + (static_cast<float>(x) + 0.5f) * map.tile_size().x,
+                    world_y,
+                };
+                tile.size = map.tile_size();
+                tile.atlas_index = atlas_index;
+                render_layer.tiles.push_back(tile);
+            }
         }
+
+        render_world.terrain_layers.push_back(std::move(render_layer));
     }
 
     render_world.units.reserve(world.unit_count());

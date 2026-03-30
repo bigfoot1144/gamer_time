@@ -14,12 +14,14 @@ layout(location = 2) in vec2 inWorldPos;
 layout(location = 3) in vec2 inSize;
 layout(location = 4) in uint inSpriteIndex;
 layout(location = 5) in uint inFlags;
+layout(location = 6) in float inOpacity;
 
 layout(location = 0) out vec2 vUv;
 layout(location = 1) out vec2 vWorldPos;
 layout(location = 2) flat out uint vSpriteIndex;
 layout(location = 3) flat out uint vFlags;
 layout(location = 4) out vec2 vAtlasUv;
+layout(location = 5) out float vOpacity;
 
 void main() {
     vec2 localOffset = (inQuadPos - vec2(0.5)) * inSize;
@@ -31,15 +33,17 @@ void main() {
     );
 
     gl_Position = vec4(ndc, 0.0, 1.0);
-    vUv = inQuadUv;
+    vec2 tileUv = vec2(inQuadUv.x, 1.0 - inQuadUv.y);
+    vUv = tileUv;
     vWorldPos = worldPos;
     vSpriteIndex = inSpriteIndex;
     vFlags = inFlags;
+    vOpacity = inOpacity;
 
     vec2 atlasGrid = max(scene.atlasGrid, vec2(1.0));
     uint atlasColumns = uint(atlasGrid.x);
     float tileX = float(inSpriteIndex % atlasColumns);
     float tileRowFromTop = float(inSpriteIndex / atlasColumns);
-    float tileY = atlasGrid.y - 1.0 - tileRowFromTop;
-    vAtlasUv = (vec2(tileX, tileY) + inQuadUv) / atlasGrid;
+    float tileY = tileRowFromTop;
+    vAtlasUv = (vec2(tileX, tileY) + tileUv) / atlasGrid;
 }

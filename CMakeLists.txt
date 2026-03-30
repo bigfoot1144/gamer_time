@@ -86,6 +86,7 @@ target_link_libraries(gt_platform PUBLIC
 add_library(gt_game STATIC
     src/game/command_queue.cpp
     src/game/fog_of_war_system.cpp
+    src/game/map_world.cpp
     src/game/navigation_system.cpp
     src/game/selection_system.cpp
     src/game/tile_map.cpp
