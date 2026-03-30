@@ -1,5 +1,6 @@
 #pragma once
 
+#include "assets/image_loader.h"
 #include "gpu/buffer_utils.h"
 #include "gpu/texture_utils.h"
 #include "gpu/vulkan_context.h"
@@ -26,11 +27,13 @@ public:
 
     void upload_instance_data(std::span<const InstanceData> instances);
     void upload_fog_mask(std::span<const std::uint8_t> fog_mask, std::uint32_t width, std::uint32_t height);
+    void upload_scene_atlas(const LoadedImage & image);
 
     const BufferAllocation & static_quad_vertex_buffer() const { return static_quad_vertex_buffer_; }
     const BufferAllocation & static_quad_index_buffer() const { return static_quad_index_buffer_; }
     const BufferAllocation & instance_buffer() const { return instance_buffer_; }
     const TextureAllocation & fog_texture() const { return fog_texture_; }
+    const TextureAllocation & scene_atlas_texture() const { return scene_atlas_texture_; }
     const TextureAllocation & font_atlas_texture() const { return font_atlas_texture_; }
     VkBuffer text_vertex_buffer() const { return text_vertex_buffer_; }
 
@@ -44,6 +47,7 @@ private:
     BufferAllocation static_quad_index_buffer_{};
     BufferAllocation instance_buffer_{};
     TextureAllocation fog_texture_{};
+    TextureAllocation scene_atlas_texture_{};
     TextureAllocation font_atlas_texture_{};
     VkBuffer text_vertex_buffer_ = VK_NULL_HANDLE;
     std::vector<InstanceData> staged_instances_;
@@ -53,6 +57,7 @@ private:
     void create_static_quad_buffers();
     void ensure_instance_buffer_capacity(VkDeviceSize required_size);
     void ensure_fog_texture(std::uint32_t width, std::uint32_t height);
+    void ensure_scene_atlas_texture(std::uint32_t width, std::uint32_t height);
     void destroy_buffer(BufferAllocation & allocation);
     void destroy_texture(TextureAllocation & allocation);
     uint32_t find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties) const;

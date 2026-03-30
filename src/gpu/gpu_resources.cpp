@@ -26,6 +26,7 @@ void GpuResources::shutdown() {
         destroy_buffer(static_quad_index_buffer_);
         destroy_buffer(static_quad_vertex_buffer_);
         destroy_texture(fog_texture_);
+        destroy_texture(scene_atlas_texture_);
         if (upload_command_pool_ != VK_NULL_HANDLE) {
             vkDestroyCommandPool(device(), upload_command_pool_, nullptr);
             upload_command_pool_ = VK_NULL_HANDLE;
@@ -42,6 +43,7 @@ void GpuResources::reset() {
     static_quad_index_buffer_ = {};
     instance_buffer_ = {};
     fog_texture_ = {};
+    scene_atlas_texture_ = {};
     font_atlas_texture_ = {};
     text_vertex_buffer_ = VK_NULL_HANDLE;
     staged_instances_.clear();
@@ -105,6 +107,34 @@ void GpuResources::upload_fog_mask(std::span<const std::uint8_t> fog_mask, std::
     transition_image_layout(fog_texture_.handle, fog_texture_.format, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     copy_buffer_to_image(staging_buffer.handle, fog_texture_.handle, width, height);
     transition_image_layout(fog_texture_.handle, fog_texture_.format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    destroy_buffer(staging_buffer);
+}
+
+void GpuResources::upload_scene_atlas(const LoadedImage & image) {
+    if (image.empty()) {
+        fail("Cannot upload an empty scene atlas");
+    }
+
+    ensure_scene_atlas_texture(image.width, image.height);
+    scene_atlas_texture_.width = image.width;
+    scene_atlas_texture_.height = image.height;
+    scene_atlas_texture_.format = VK_FORMAT_R8G8B8A8_UNORM;
+
+    BufferAllocation staging_buffer = create_buffer(
+        image.rgba_pixels.size(),
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+
+    void * mapped_data = nullptr;
+    check_vk(vkMapMemory(device(), staging_buffer.memory, 0, image.rgba_pixels.size(), 0, &mapped_data), "Failed to map scene atlas staging buffer");
+    std::memcpy(mapped_data, image.rgba_pixels.data(), image.rgba_pixels.size());
+    vkUnmapMemory(device(), staging_buffer.memory);
+
+    transition_image_layout(scene_atlas_texture_.handle, scene_atlas_texture_.format, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copy_buffer_to_image(staging_buffer.handle, scene_atlas_texture_.handle, image.width, image.height);
+    transition_image_layout(scene_atlas_texture_.handle, scene_atlas_texture_.format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     destroy_buffer(staging_buffer);
 }
@@ -197,6 +227,41 @@ void GpuResources::ensure_fog_texture(std::uint32_t width, std::uint32_t height)
 
     check_vk(vkCreateSampler(device(), &sampler_info, nullptr, &fog_texture_.sampler), "Failed to create fog sampler");
     transition_image_layout(fog_texture_.handle, fog_texture_.format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+}
+
+void GpuResources::ensure_scene_atlas_texture(std::uint32_t width, std::uint32_t height) {
+    const bool needs_new_texture =
+        scene_atlas_texture_.handle == VK_NULL_HANDLE ||
+        scene_atlas_texture_.width != width ||
+        scene_atlas_texture_.height != height;
+    if (!needs_new_texture) {
+        return;
+    }
+
+    destroy_texture(scene_atlas_texture_);
+    scene_atlas_texture_ = create_texture(
+        width,
+        height,
+        VK_FORMAT_R8G8B8A8_UNORM,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+    );
+
+    VkSamplerCreateInfo sampler_info{};
+    sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler_info.magFilter = VK_FILTER_NEAREST;
+    sampler_info.minFilter = VK_FILTER_NEAREST;
+    sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.maxAnisotropy = 1.0f;
+    sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    sampler_info.unnormalizedCoordinates = VK_FALSE;
+    sampler_info.compareEnable = VK_FALSE;
+    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+
+    check_vk(vkCreateSampler(device(), &sampler_info, nullptr, &scene_atlas_texture_.sampler), "Failed to create scene atlas sampler");
+    transition_image_layout(scene_atlas_texture_.handle, scene_atlas_texture_.format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void GpuResources::destroy_buffer(BufferAllocation & allocation) {

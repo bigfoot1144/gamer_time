@@ -8,6 +8,7 @@ namespace {
 struct ScenePushConstants {
     float camera_center[2];
     float viewport_size[2];
+    float atlas_grid[2];
     float fog_size[2];
     float zoom;
 };
@@ -93,6 +94,24 @@ void SceneRenderer::set_overlay_text(std::string text) {
     text_overlay_.set_text(std::move(text));
 }
 
+void SceneRenderer::initialize_scene_atlas(const AtlasAsset & atlas, const LoadedImage & image) {
+    if (!atlas.is_valid()) {
+        fail("Scene atlas metadata is invalid");
+    }
+    if (image.empty()) {
+        fail("Scene atlas image is empty");
+    }
+    if (image.width % atlas.tile_width != 0 || image.height % atlas.tile_height != 0) {
+        fail("Scene atlas image dimensions do not match tile dimensions");
+    }
+
+    scene_atlas_ = atlas;
+    scene_atlas_.columns = image.width / atlas.tile_width;
+    scene_atlas_.rows = image.height / atlas.tile_height;
+    resources_.upload_scene_atlas(image);
+    update_scene_descriptor_set();
+}
+
 void SceneRenderer::upload_frame_resources(
     const RenderBatch & batch,
     std::span<const std::uint8_t> fog_mask,
@@ -100,6 +119,7 @@ void SceneRenderer::upload_frame_resources(
     std::uint32_t fog_height,
     const CameraState & camera
 ) {
+    batch_ = batch;
     resources_.upload_instance_data(batch.instances);
     resources_.upload_fog_mask(fog_mask, fog_width, fog_height);
     camera_ = camera;
@@ -221,16 +241,20 @@ void SceneRenderer::create_render_pass() {
 }
 
 void SceneRenderer::create_scene_descriptor_set_layout() {
-    VkDescriptorSetLayoutBinding fog_binding{};
-    fog_binding.binding = 0;
-    fog_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    fog_binding.descriptorCount = 1;
-    fog_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
     VkDescriptorSetLayoutCreateInfo layout_info{};
     layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout_info.bindingCount = 1;
-    layout_info.pBindings = &fog_binding;
+    layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
+    layout_info.pBindings = bindings.data();
 
     check_vk(vkCreateDescriptorSetLayout(context_.device(), &layout_info, nullptr, &scene_descriptor_set_layout_), "Failed to create scene descriptor set layout");
 }
@@ -238,7 +262,7 @@ void SceneRenderer::create_scene_descriptor_set_layout() {
 void SceneRenderer::create_scene_descriptor_resources() {
     VkDescriptorPoolSize pool_size{};
     pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    pool_size.descriptorCount = 1;
+    pool_size.descriptorCount = 2;
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -264,24 +288,39 @@ void SceneRenderer::update_scene_descriptor_set() {
     }
 
     const gpu::TextureAllocation & fog = resources_.fog_texture();
-    if (fog.view == VK_NULL_HANDLE || fog.sampler == VK_NULL_HANDLE) {
+    const gpu::TextureAllocation & atlas = resources_.scene_atlas_texture();
+    if (
+        fog.view == VK_NULL_HANDLE ||
+        fog.sampler == VK_NULL_HANDLE ||
+        atlas.view == VK_NULL_HANDLE ||
+        atlas.sampler == VK_NULL_HANDLE
+    ) {
         return;
     }
 
-    VkDescriptorImageInfo image_info{};
-    image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    image_info.imageView = fog.view;
-    image_info.sampler = fog.sampler;
+    std::array<VkDescriptorImageInfo, 2> image_infos{};
+    image_infos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image_infos[0].imageView = atlas.view;
+    image_infos[0].sampler = atlas.sampler;
+    image_infos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    image_infos[1].imageView = fog.view;
+    image_infos[1].sampler = fog.sampler;
 
-    VkWriteDescriptorSet descriptor_write{};
-    descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_write.dstSet = scene_descriptor_set_;
-    descriptor_write.dstBinding = 0;
-    descriptor_write.descriptorCount = 1;
-    descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptor_write.pImageInfo = &image_info;
+    std::array<VkWriteDescriptorSet, 2> descriptor_writes{};
+    descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptor_writes[0].dstSet = scene_descriptor_set_;
+    descriptor_writes[0].dstBinding = 0;
+    descriptor_writes[0].descriptorCount = 1;
+    descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptor_writes[0].pImageInfo = &image_infos[0];
+    descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptor_writes[1].dstSet = scene_descriptor_set_;
+    descriptor_writes[1].dstBinding = 1;
+    descriptor_writes[1].descriptorCount = 1;
+    descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptor_writes[1].pImageInfo = &image_infos[1];
 
-    vkUpdateDescriptorSets(context_.device(), 1, &descriptor_write, 0, nullptr);
+    vkUpdateDescriptorSets(context_.device(), static_cast<uint32_t>(descriptor_writes.size()), descriptor_writes.data(), 0, nullptr);
 }
 
 std::vector<uint32_t> SceneRenderer::load_spirv_file(const std::string & path) const {
@@ -387,7 +426,7 @@ void SceneRenderer::create_graphics_pipeline() {
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.cullMode = VK_CULL_MODE_NONE;
     rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -567,6 +606,8 @@ void SceneRenderer::record_command_buffer(VkCommandBuffer command_buffer, uint32
     push_constants.camera_center[1] = camera_.world_center.y;
     push_constants.viewport_size[0] = static_cast<float>(swapchain_.extent().width);
     push_constants.viewport_size[1] = static_cast<float>(swapchain_.extent().height);
+    push_constants.atlas_grid[0] = static_cast<float>(scene_atlas_.columns);
+    push_constants.atlas_grid[1] = static_cast<float>(scene_atlas_.rows);
     push_constants.fog_size[0] = static_cast<float>(fog.width);
     push_constants.fog_size[1] = static_cast<float>(fog.height);
     push_constants.zoom = camera_.zoom;
@@ -579,9 +620,11 @@ void SceneRenderer::record_command_buffer(VkCommandBuffer command_buffer, uint32
         &push_constants
     );
 
-    const uint32_t instance_count = static_cast<uint32_t>(resources_.staged_instances().size());
-    if (instance_count > 0) {
-        vkCmdDrawIndexed(command_buffer, 6, instance_count, 0, 0, 0);
+    if (batch_.terrain_instance_count > 0) {
+        vkCmdDrawIndexed(command_buffer, 6, batch_.terrain_instance_count, 0, 0, static_cast<int32_t>(batch_.terrain_instance_offset));
+    }
+    if (batch_.unit_instance_count > 0) {
+        vkCmdDrawIndexed(command_buffer, 6, batch_.unit_instance_count, 0, 0, static_cast<int32_t>(batch_.unit_instance_offset));
     }
 
     text_overlay_.record(command_buffer);

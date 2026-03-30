@@ -49,6 +49,15 @@ target_include_directories(gt_core INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
+add_library(gt_assets STATIC
+    src/assets/atlas_asset.cpp
+    src/assets/image_loader.cpp
+)
+gt_configure_target(gt_assets)
+target_link_libraries(gt_assets PUBLIC
+    gt_core
+)
+
 add_library(gt_ai STATIC
     src/ai/llama_controller.cpp
     src/ai/token_stream.cpp
@@ -78,10 +87,12 @@ add_library(gt_game STATIC
     src/game/fog_of_war_system.cpp
     src/game/navigation_system.cpp
     src/game/selection_system.cpp
+    src/game/tile_map.cpp
     src/game/world.cpp
 )
 gt_configure_target(gt_game)
 target_link_libraries(gt_game PUBLIC
+    gt_assets
     gt_core
     gt_platform
 )
@@ -96,6 +107,7 @@ add_library(gt_gpu STATIC
 )
 gt_configure_target(gt_gpu)
 target_link_libraries(gt_gpu PUBLIC
+    gt_assets
     gt_core
     Vulkan::Vulkan
     SDL3::SDL3-static
@@ -123,6 +135,7 @@ add_library(gt_app STATIC
 gt_configure_target(gt_app)
 target_link_libraries(gt_app PUBLIC
     gt_ai
+    gt_assets
     gt_game
     gt_platform
     gt_render

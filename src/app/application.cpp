@@ -4,6 +4,30 @@
 #include <sstream>
 #include <utility>
 
+namespace {
+
+AtlasAsset build_default_scene_atlas() {
+    return AtlasAsset::from_grid_image(
+        "assets/tiles/sample_scene_atlas.png",
+        24,
+        24,
+        {
+            {"grass_a", 0},
+            {"grass_b", 1},
+            {"grass_c", 2},
+            {"wall", 3},
+            {"rock", 4},
+            {"water", 5},
+            {"unit_orange", 12},
+            {"unit_teal", 13},
+            {"unit_green", 14},
+            {"unit_red", 15},
+        }
+    );
+}
+
+} // namespace
+
 Application::Application(RuntimeConfig config)
     : config_(std::move(config)) {
 }
@@ -35,6 +59,12 @@ void Application::initialize() {
 
     platform_.initialize(config_);
     scene_renderer_.initialize(platform_.window(), config_.shader_dir);
+    scene_atlas_ = build_default_scene_atlas();
+    scene_atlas_image_ = assets::load_png_rgba(scene_atlas_.image_path);
+    scene_atlas_.columns = scene_atlas_image_.width / scene_atlas_.tile_width;
+    scene_atlas_.rows = scene_atlas_image_.height / scene_atlas_.tile_height;
+    scene_renderer_.initialize_scene_atlas(scene_atlas_, scene_atlas_image_);
+    world_.seed_test_terrain();
     world_.seed_test_units();
 
     if (!config_.model_path.empty()) {
@@ -117,8 +147,10 @@ void Application::update_window_title(const RenderBatch & batch) const {
 
     std::string title = "gamer_time | units: ";
     title += std::to_string(world_.unit_count());
+    title += " | tiles: ";
+    title += std::to_string(world_.terrain().tile_count());
     title += " | visible: ";
-    title += std::to_string(batch.instances.size());
+    title += std::to_string(batch.unit_instance_count);
     title += " | selected: ";
     title += std::to_string(world_.selected_units().size());
     title += " | llama: ";
@@ -139,10 +171,12 @@ std::string Application::build_overlay_text() const {
     overlay << "GAMER_TIME RTS FRAMEWORK\n";
     overlay << "ESC quit | SPACE rerun prompt | click select | right click move | WASD/Arrows pan | wheel zoom\n\n";
     overlay << "Units: " << world_.unit_count() << '\n';
+    overlay << "Terrain tiles: " << world_.terrain().tile_count() << '\n';
     overlay << "Selected: " << world_.selected_units().size() << '\n';
     overlay << "Camera: (" << static_cast<int>(camera.world_center.x) << ", " << static_cast<int>(camera.world_center.y) << ") zoom " << camera.zoom << "\n";
     overlay << "Fog cells visible: " << std::count(world_.fog_mask().begin(), world_.fog_mask().end(), static_cast<std::uint8_t>(255)) << "\n";
     overlay << "Uploaded instances: " << scene_renderer_.resources().staged_instances().size() << "\n";
+    overlay << "Scene atlas grid: " << scene_atlas_.columns << "x" << scene_atlas_.rows << "\n";
     overlay << "Fog texture size: " << scene_renderer_.resources().fog_texture().width << "x" << scene_renderer_.resources().fog_texture().height << "\n\n";
 
     if (config_.model_path.empty()) {

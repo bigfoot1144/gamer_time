@@ -1,5 +1,7 @@
 #pragma once
 
+#include "assets/atlas_asset.h"
+#include "assets/image_loader.h"
 #include "common.h"
 #include "gpu/gpu_resources.h"
 #include "gpu/swapchain_manager.h"
@@ -21,6 +23,7 @@ public:
 
     void request_resize();
     void set_overlay_text(std::string text);
+    void initialize_scene_atlas(const AtlasAsset & atlas, const LoadedImage & image);
     void upload_frame_resources(
         const RenderBatch & batch,
         std::span<const std::uint8_t> fog_mask,
@@ -38,6 +41,8 @@ private:
     std::string shader_dir_;
     bool framebuffer_resized_ = false;
     CameraState camera_{};
+    RenderBatch batch_{};
+    AtlasAsset scene_atlas_{};
 
     gpu::VulkanContext context_;
     gpu::SwapchainManager swapchain_;

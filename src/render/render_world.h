@@ -17,6 +17,12 @@ struct RenderUnit {
     bool selected = false;
 };
 
+struct RenderTile {
+    Vec2f world_pos{};
+    Vec2f size{24.0f, 24.0f};
+    std::uint32_t atlas_index = 0;
+};
+
 struct ProjectedUnit {
     RenderUnit source{};
     Vec2f screen_pos{};
@@ -32,10 +38,15 @@ struct InstanceData {
 
 struct RenderBatch {
     std::vector<InstanceData> instances;
+    std::uint32_t terrain_instance_offset = 0;
+    std::uint32_t terrain_instance_count = 0;
+    std::uint32_t unit_instance_offset = 0;
+    std::uint32_t unit_instance_count = 0;
 };
 
 struct RenderWorld {
     CameraState camera{};
+    std::vector<RenderTile> terrain_tiles;
     std::vector<RenderUnit> units;
     std::vector<ProjectedUnit> projected_units;
     std::string overlay_text;

@@ -21,6 +21,18 @@ RenderWorld RenderExtractor::build(
         }
     }
 
+    const TileMap & terrain = world.terrain();
+    render_world.terrain_tiles.reserve(terrain.tile_count());
+    for (std::uint32_t y = 0; y < terrain.height(); ++y) {
+        for (std::uint32_t x = 0; x < terrain.width(); ++x) {
+            RenderTile tile{};
+            tile.world_pos = terrain.cell_center_world(x, y);
+            tile.size = terrain.tile_size();
+            tile.atlas_index = terrain.atlas_index_at(x, y);
+            render_world.terrain_tiles.push_back(tile);
+        }
+    }
+
     render_world.units.reserve(world.unit_count());
     for (UnitId unit_id : world.unit_ids()) {
         const TransformComponent * transform = world.try_transform(unit_id);

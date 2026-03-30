@@ -2,6 +2,8 @@
 
 #include "ai/llama_controller.h"
 #include "app/runtime_config.h"
+#include "assets/atlas_asset.h"
+#include "assets/image_loader.h"
 #include "game/fog_of_war_system.h"
 #include "game/navigation_system.h"
 #include "game/selection_system.h"
@@ -53,6 +55,8 @@ private:
     bool running_ = false;
     bool initialized_ = false;
     bool submitted_demo_prompt_ = false;
+    AtlasAsset scene_atlas_;
+    LoadedImage scene_atlas_image_;
     std::string last_ai_status_;
     std::string last_ai_result_;
     std::vector<std::string> recent_ai_events_;
