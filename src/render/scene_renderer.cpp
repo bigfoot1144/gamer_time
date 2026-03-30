@@ -5,6 +5,9 @@
 
 namespace {
 
+constexpr float kFogCellWorldWidth = 16.0f;
+constexpr float kFogCellWorldHeight = 16.0f;
+
 struct ScenePushConstants {
     float camera_center[2];
     float viewport_size[2];
@@ -608,8 +611,8 @@ void SceneRenderer::record_command_buffer(VkCommandBuffer command_buffer, uint32
     push_constants.viewport_size[1] = static_cast<float>(swapchain_.extent().height);
     push_constants.atlas_grid[0] = static_cast<float>(scene_atlas_.columns);
     push_constants.atlas_grid[1] = static_cast<float>(scene_atlas_.rows);
-    push_constants.fog_size[0] = static_cast<float>(fog.width);
-    push_constants.fog_size[1] = static_cast<float>(fog.height);
+    push_constants.fog_size[0] = static_cast<float>(fog.width) * kFogCellWorldWidth;
+    push_constants.fog_size[1] = static_cast<float>(fog.height) * kFogCellWorldHeight;
     push_constants.zoom = camera_.zoom;
     vkCmdPushConstants(
         command_buffer,

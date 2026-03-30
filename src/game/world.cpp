@@ -18,7 +18,7 @@ void World::seed_test_terrain() {
     }
 
     constexpr std::uint32_t kMapWidth = 20;
-    constexpr std::uint32_t kMapHeight = 14;
+    constexpr std::uint32_t kMapHeight = 20;
     constexpr float kTileSize = 24.0f;
 
     const Vec2f tile_size{kTileSize, kTileSize};
@@ -30,13 +30,13 @@ void World::seed_test_terrain() {
 
     for (std::uint32_t y = 0; y < kMapHeight; ++y) {
         for (std::uint32_t x = 0; x < kMapWidth; ++x) {
-            std::uint32_t atlas_index = ((x + y) % 3u);
+            std::uint32_t atlas_index = 1;
             if (x == 0 || y == 0 || x + 1 == kMapWidth || y + 1 == kMapHeight) {
-                atlas_index = 3;
+                atlas_index = 1;
             } else if ((x + 2u * y) % 11u == 0u) {
-                atlas_index = 4;
+                atlas_index = 1;
             } else if ((x > 5 && x < 9) && (y > 3 && y < 10)) {
-                atlas_index = 5;
+                atlas_index = 1;
             }
             terrain_.set_atlas_index(x, y, atlas_index);
         }
