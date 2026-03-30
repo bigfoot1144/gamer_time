@@ -47,6 +47,6 @@ Vec2f SelectionSystem::screen_to_world(const InputState & input, const CameraSta
 
     return {
         camera.world_center.x + normalized_x * view_width,
-        camera.world_center.y + normalized_y * view_height,
+        camera.world_center.y - normalized_y * view_height,
     };
 }

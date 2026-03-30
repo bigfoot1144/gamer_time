@@ -16,10 +16,10 @@ void CameraController::update(const InputState & input, float dt_seconds) {
         delta.x += 1.0f;
     }
     if (input.move_up) {
-        delta.y -= 1.0f;
+        delta.y += 1.0f;
     }
     if (input.move_down) {
-        delta.y += 1.0f;
+        delta.y -= 1.0f;
     }
 
     state_.world_center += delta * (kPanSpeed * dt_seconds / state_.zoom);
