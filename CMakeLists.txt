@@ -52,6 +52,7 @@ target_include_directories(gt_core INTERFACE
 add_library(gt_assets STATIC
     src/assets/atlas_asset.cpp
     src/assets/image_loader.cpp
+    src/assets/tmx_map_loader.cpp
 )
 gt_configure_target(gt_assets)
 target_link_libraries(gt_assets PUBLIC

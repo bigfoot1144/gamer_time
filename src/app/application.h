@@ -4,6 +4,7 @@
 #include "app/runtime_config.h"
 #include "assets/atlas_asset.h"
 #include "assets/image_loader.h"
+#include "assets/tmx_map_loader.h"
 #include "game/fog_of_war_system.h"
 #include "game/navigation_system.h"
 #include "game/selection_system.h"

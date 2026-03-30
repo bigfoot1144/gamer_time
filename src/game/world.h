@@ -12,8 +12,8 @@ class World {
 public:
     World();
 
-    void seed_test_terrain();
     void seed_test_units();
+    void set_terrain(TileMap terrain);
 
     UnitId create_unit(
         TransformComponent transform,

@@ -6,25 +6,7 @@
 
 namespace {
 
-AtlasAsset build_default_scene_atlas() {
-    return AtlasAsset::from_grid_image(
-        "assets/tiles/sample_scene_atlas.png",
-        24,
-        24,
-        {
-            {"grass_a", 0},
-            {"grass_b", 1},
-            {"grass_c", 2},
-            {"wall", 3},
-            {"rock", 4},
-            {"water", 5},
-            {"unit_orange", 12},
-            {"unit_teal", 13},
-            {"unit_green", 14},
-            {"unit_red", 15},
-        }
-    );
-}
+constexpr const char * kDefaultMapPath = "assets/maps/grass_tileset_map.tmx";
 
 } // namespace
 
@@ -59,12 +41,13 @@ void Application::initialize() {
 
     platform_.initialize(config_);
     scene_renderer_.initialize(platform_.window(), config_.shader_dir);
-    scene_atlas_ = build_default_scene_atlas();
+    const TmxMapAsset map_asset = assets::load_tmx_map(kDefaultMapPath);
+    world_.set_terrain(assets::build_flattened_tile_map_from_tmx(map_asset));
+    scene_atlas_ = assets::build_atlas_from_tmx(map_asset, assets::resolve_tmx_tileset_image_path(map_asset));
     scene_atlas_image_ = assets::load_png_rgba(scene_atlas_.image_path);
     scene_atlas_.columns = scene_atlas_image_.width / scene_atlas_.tile_width;
     scene_atlas_.rows = scene_atlas_image_.height / scene_atlas_.tile_height;
     scene_renderer_.initialize_scene_atlas(scene_atlas_, scene_atlas_image_);
-    world_.seed_test_terrain();
     world_.seed_test_units();
 
     if (!config_.model_path.empty()) {
