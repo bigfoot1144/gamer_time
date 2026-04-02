@@ -137,6 +137,11 @@ bool CollisionBounds::intersects_segment(const Vec2f & start, const Vec2f & end)
     return max_x >= min.x && min_x <= max.x && max_y >= min.y && min_y <= max.y;
 }
 
+bool CollisionBounds::intersects(const CollisionBounds & other) const {
+    return max.x >= other.min.x && min.x <= other.max.x &&
+           max.y >= other.min.y && min.y <= other.max.y;
+}
+
 CollisionWorld CollisionWorld::from_map(const MapWorld & map) {
     CollisionWorld collision_world{};
 
@@ -163,8 +168,13 @@ CollisionWorld CollisionWorld::from_map(const MapWorld & map) {
     return collision_world;
 }
 
-bool CollisionWorld::blocks_segment(const Vec2f & start, const Vec2f & end) const {
-    for (const CollisionShape & shape : shapes_) {
+bool CollisionWorld::blocks_segment(std::span<const CollisionShape * const> candidates, const Vec2f & start, const Vec2f & end) const {
+    for (const CollisionShape * shape_ptr : candidates) {
+        if (!shape_ptr) {
+            continue;
+        }
+
+        const CollisionShape & shape = *shape_ptr;
         if (!shape.bounds.intersects_segment(start, end) && !point_in_bounds(shape.bounds, end)) {
             continue;
         }
@@ -185,8 +195,22 @@ bool CollisionWorld::blocks_segment(const Vec2f & start, const Vec2f & end) cons
     return false;
 }
 
-bool CollisionWorld::blocks_point(const Vec2f & point) const {
+bool CollisionWorld::blocks_segment(const Vec2f & start, const Vec2f & end) const {
+    std::vector<const CollisionShape *> candidates;
+    candidates.reserve(shapes_.size());
     for (const CollisionShape & shape : shapes_) {
+        candidates.push_back(&shape);
+    }
+    return blocks_segment(candidates, start, end);
+}
+
+bool CollisionWorld::blocks_point(std::span<const CollisionShape * const> candidates, const Vec2f & point) const {
+    for (const CollisionShape * shape_ptr : candidates) {
+        if (!shape_ptr) {
+            continue;
+        }
+
+        const CollisionShape & shape = *shape_ptr;
         if (!point_in_bounds(shape.bounds, point)) {
             continue;
         }
@@ -196,4 +220,23 @@ bool CollisionWorld::blocks_point(const Vec2f & point) const {
     }
 
     return false;
+}
+
+bool CollisionWorld::blocks_point(const Vec2f & point) const {
+    std::vector<const CollisionShape *> candidates;
+    candidates.reserve(shapes_.size());
+    for (const CollisionShape & shape : shapes_) {
+        candidates.push_back(&shape);
+    }
+    return blocks_point(candidates, point);
+}
+
+std::vector<const CollisionShape *> CollisionWorld::query_bounds(const CollisionBounds & bounds) const {
+    std::vector<const CollisionShape *> candidates;
+    for (const CollisionShape & shape : shapes_) {
+        if (shape.bounds.intersects(bounds)) {
+            candidates.push_back(&shape);
+        }
+    }
+    return candidates;
 }
