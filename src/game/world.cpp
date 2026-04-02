@@ -14,6 +14,7 @@ World::World()
 
 void World::set_map(MapWorld map) {
     map_ = std::move(map);
+    collision_ = CollisionWorld::from_map(map_);
 }
 
 void World::seed_test_units() {

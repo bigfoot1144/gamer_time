@@ -12,6 +12,7 @@ public:
     RenderWorld build(
         const World & world,
         const CameraState & camera,
+        bool show_collision_debug,
         const std::vector<std::string> & ai_events,
         std::string overlay_text
     ) const;

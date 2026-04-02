@@ -60,6 +60,7 @@ struct TmxObjectAsset {
     bool visible = true;
     std::uint32_t gid = 0;
     bool has_polygon = false;
+    bool is_point = false;
     TmxPolygon polygon;
     std::vector<TmxProperty> properties;
 };

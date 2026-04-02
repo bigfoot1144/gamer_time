@@ -15,6 +15,7 @@ layout(location = 3) in vec2 inSize;
 layout(location = 4) in uint inSpriteIndex;
 layout(location = 5) in uint inFlags;
 layout(location = 6) in float inOpacity;
+layout(location = 7) in float inRotationRadians;
 
 layout(location = 0) out vec2 vUv;
 layout(location = 1) out vec2 vWorldPos;
@@ -25,6 +26,12 @@ layout(location = 5) out float vOpacity;
 
 void main() {
     vec2 localOffset = (inQuadPos - vec2(0.5)) * inSize;
+    float s = sin(inRotationRadians);
+    float c = cos(inRotationRadians);
+    localOffset = vec2(
+        localOffset.x * c - localOffset.y * s,
+        localOffset.x * s + localOffset.y * c
+    );
     vec2 worldPos = inWorldPos + localOffset;
     vec2 screenPos = (worldPos - scene.cameraCenter) * scene.zoom + scene.viewportSize * 0.5;
     vec2 ndc = vec2(

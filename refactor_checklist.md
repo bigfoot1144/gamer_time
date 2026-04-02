@@ -239,7 +239,7 @@ Goal: let TMX content exist without forcing hardcoded tile-layer names into the 
 - [x] Default tile layers to renderable ordered content
 - [x] Do not require tile layers to have semantic names
 - [x] Do not derive tile rendering behavior from names like `Paths` or `Grass Dark`
-- [ ] Derive gameplay semantics from object groups, objects, and explicit properties instead
+- [x] Derive gameplay semantics from object groups, objects, and explicit properties instead
 - [x] Never require every authored layer to have engine behavior
 
 Recommended approach:
@@ -272,9 +272,9 @@ Goal: ingest object layers generically and support the current collision polygon
 - [x] Parse polygons as local point lists
 - [x] Convert polygon local points to world-space polygon geometry
 - [x] Preserve raw object metadata and properties even when no system consumes them
-- [ ] Add support for rectangle and point objects as future-ready baseline shapes
+- [x] Add support for rectangle and point objects as future-ready baseline shapes
 - [x] Allow object groups and objects to have specific authored names such as `collision`, `lava`, `water`, or `boundary`
-- [ ] Let these names and properties drive optional engine behavior
+- [x] Let these names and properties drive optional engine behavior
 - [x] Do nothing for object groups or objects the engine does not implement yet
 
 For the current map:
@@ -293,12 +293,12 @@ Exit criteria:
 
 Goal: make authored collision geometry affect gameplay movement.
 
-- [ ] Add `src/game/collision_world.h/.cpp`
-- [ ] Build collision geometry from map object layers tagged as collidable
-- [ ] Add world-space polygon storage
-- [ ] Add broad-phase bounds per polygon
-- [ ] Integrate collision checks into unit movement
-- [ ] Start with simple “cannot move through polygon” behavior
+- [x] Add `src/game/collision_world.h/.cpp`
+- [x] Build collision geometry from map object layers tagged as collidable
+- [x] Add world-space polygon storage
+- [x] Add broad-phase bounds per polygon
+- [x] Integrate collision checks into unit movement
+- [x] Start with simple “cannot move through polygon” behavior
 - [ ] Do not require pathfinding refactor in the first pass
 
 Recommended rollout:
@@ -309,8 +309,8 @@ Recommended rollout:
 
 Exit criteria:
 
-- [ ] Units no longer move through authored collision polygons
-- [ ] Collision uses TMX-authored geometry, not hardcoded C++ logic
+- [x] Units no longer move through authored collision polygons
+- [x] Collision uses TMX-authored geometry, not hardcoded C++ logic
 
 ## Phase 8: Property System For Future Gameplay
 
@@ -326,7 +326,7 @@ Goal: make TMX properties the stable contract for future content.
   tileset
   layer
   object
-- [ ] Add typed helpers to query properties safely
+- [x] Add typed helpers to query properties safely
 - [ ] Make systems opt into the properties they understand
 - [ ] Make unrecognized properties inert by default
 
@@ -350,12 +350,12 @@ Exit criteria:
 
 Goal: make authored TMX content inspectable while the engine grows.
 
-- [ ] Add overlay debug stats for:
+- [x] Add overlay debug stats for:
   map size
   tile layer count
   object layer count
   collision polygon count
-- [ ] Add optional debug rendering for collision polygons
+- [x] Add optional debug rendering for collision polygons
 - [ ] Log unknown semantics at startup without failing
 - [ ] Add validation warnings for malformed known content
 - [ ] Keep permissive handling for unknown but well-formed content

@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,10 +16,21 @@ struct MapProperty {
     std::string name;
     std::string type = "string";
     std::string value;
+
+    bool as_bool(bool fallback = false) const;
+    std::int32_t as_int(std::int32_t fallback = 0) const;
+    float as_float(float fallback = 0.0f) const;
 };
 
 struct MapPolygon {
     std::vector<Vec2f> points;
+};
+
+enum class MapObjectShape {
+    None,
+    Point,
+    Rectangle,
+    Polygon,
 };
 
 struct MapObject {
@@ -30,9 +42,17 @@ struct MapObject {
     float rotation = 0.0f;
     bool visible = true;
     std::uint32_t gid = 0;
+    MapObjectShape shape = MapObjectShape::None;
     bool has_polygon = false;
+    bool is_point = false;
     MapPolygon polygon;
     std::vector<MapProperty> properties;
+
+    const MapProperty * find_property(std::string_view name) const;
+    bool property_as_bool(std::string_view name, bool fallback = false) const;
+    std::optional<std::int32_t> property_as_int(std::string_view name) const;
+    std::optional<float> property_as_float(std::string_view name) const;
+    std::string_view property_value(std::string_view name) const;
 };
 
 struct TileLayer {
@@ -60,6 +80,12 @@ struct ObjectLayer {
     float opacity = 1.0f;
     std::vector<MapObject> objects;
     std::vector<MapProperty> properties;
+
+    const MapProperty * find_property(std::string_view name) const;
+    bool property_as_bool(std::string_view name, bool fallback = false) const;
+    std::optional<std::int32_t> property_as_int(std::string_view name) const;
+    std::optional<float> property_as_float(std::string_view name) const;
+    std::string_view property_value(std::string_view name) const;
 };
 
 struct CollisionPolygon {

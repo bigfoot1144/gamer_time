@@ -3,9 +3,12 @@
 #include "game/map_world.h"
 #include "game/world.h"
 
+#include <cmath>
+
 RenderWorld RenderExtractor::build(
     const World & world,
     const CameraState & camera,
+    bool show_collision_debug,
     const std::vector<std::string> & ai_events,
     std::string overlay_text
 ) const {
@@ -70,6 +73,34 @@ RenderWorld RenderExtractor::build(
         render_unit.sprite_index = render->sprite_index;
         render_unit.selected = unit->selected;
         render_world.units.push_back(render_unit);
+    }
+
+    if (show_collision_debug) {
+        constexpr float kDebugLineThickness = 2.0f;
+
+        for (const CollisionShape & shape : world.collision().shapes()) {
+            if (shape.points.size() < 2) {
+                continue;
+            }
+
+            for (std::size_t i = 0; i < shape.points.size(); ++i) {
+                const Vec2f & start = shape.points[i];
+                const Vec2f & end = shape.points[(i + 1) % shape.points.size()];
+                const Vec2f edge = end - start;
+                const float edge_length = length(edge);
+                if (edge_length <= 0.001f) {
+                    continue;
+                }
+
+                RenderDebugQuad quad{};
+                quad.world_pos = (start + end) * 0.5f;
+                quad.size = {edge_length, kDebugLineThickness};
+                quad.rotation_radians = std::atan2(edge.y, edge.x);
+                quad.flags = kInstanceFlagDebugCollision | kInstanceFlagIgnoreFog;
+                quad.opacity = 0.9f;
+                render_world.debug_quads.push_back(quad);
+            }
+        }
     }
 
     return render_world;

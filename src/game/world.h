@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/command_queue.h"
+#include "game/collision_world.h"
 #include "game/components.h"
 #include "game/map_world.h"
 
@@ -74,6 +75,10 @@ public:
         return map_;
     }
 
+    const CollisionWorld & collision() const {
+        return collision_;
+    }
+
 private:
     std::size_t to_index(UnitId unit_id) const;
 
@@ -88,4 +93,5 @@ private:
     std::uint32_t fog_width_ = 64;
     std::uint32_t fog_height_ = 64;
     MapWorld map_;
+    CollisionWorld collision_;
 };

@@ -6,7 +6,7 @@ RenderBatch BatchBuilder::build(const RenderWorld & render_world) const {
     for (const RenderTileLayer & layer : render_world.terrain_layers) {
         terrain_tile_count += layer.tiles.size();
     }
-    batch.instances.reserve(terrain_tile_count + render_world.projected_units.size());
+    batch.instances.reserve(terrain_tile_count + render_world.projected_units.size() + render_world.debug_quads.size());
 
     batch.terrain_instance_offset = 0;
     for (const RenderTileLayer & layer : render_world.terrain_layers) {
@@ -39,8 +39,20 @@ RenderBatch BatchBuilder::build(const RenderWorld & render_world) const {
         instance.world_pos = projected.source.world_pos;
         instance.size = projected.source.size;
         instance.sprite_index = projected.source.sprite_index;
-        instance.flags = projected.source.selected ? 1u : 0u;
+        instance.flags = projected.source.selected ? kInstanceFlagSelected : 0u;
         instance.opacity = 1.0f;
+        batch.instances.push_back(instance);
+    }
+
+    batch.debug_instance_offset = static_cast<std::uint32_t>(batch.instances.size());
+    batch.debug_instance_count = static_cast<std::uint32_t>(render_world.debug_quads.size());
+    for (const RenderDebugQuad & quad : render_world.debug_quads) {
+        InstanceData instance{};
+        instance.world_pos = quad.world_pos;
+        instance.size = quad.size;
+        instance.flags = quad.flags;
+        instance.opacity = quad.opacity;
+        instance.rotation_radians = quad.rotation_radians;
         batch.instances.push_back(instance);
     }
 

@@ -275,6 +275,8 @@ TmxObjectAsset parse_object(const std::string & object_block) {
         object.polygon.points = parse_polygon_points(extract_attribute(polygon_block, "points"));
     }
 
+    object.is_point = !extract_tag_block(object_block, "point").empty();
+
     return object;
 }
 

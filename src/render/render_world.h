@@ -8,6 +8,10 @@
 #include <string>
 #include <vector>
 
+constexpr std::uint32_t kInstanceFlagSelected = 1u << 0;
+constexpr std::uint32_t kInstanceFlagDebugCollision = 1u << 1;
+constexpr std::uint32_t kInstanceFlagIgnoreFog = 1u << 2;
+
 struct RenderUnit {
     UnitId id = 0;
     Vec2f world_pos{};
@@ -43,12 +47,21 @@ struct ProjectedUnit {
     float depth_key = 0.0f;
 };
 
+struct RenderDebugQuad {
+    Vec2f world_pos{};
+    Vec2f size{};
+    float rotation_radians = 0.0f;
+    std::uint32_t flags = 0;
+    float opacity = 1.0f;
+};
+
 struct InstanceData {
     Vec2f world_pos{};
     Vec2f size{24.0f, 24.0f};
     std::uint32_t sprite_index = 0;
     std::uint32_t flags = 0;
     float opacity = 1.0f;
+    float rotation_radians = 0.0f;
 };
 
 struct RenderBatch {
@@ -58,6 +71,8 @@ struct RenderBatch {
     std::uint32_t terrain_instance_count = 0;
     std::uint32_t unit_instance_offset = 0;
     std::uint32_t unit_instance_count = 0;
+    std::uint32_t debug_instance_offset = 0;
+    std::uint32_t debug_instance_count = 0;
 };
 
 struct RenderWorld {
@@ -65,5 +80,6 @@ struct RenderWorld {
     std::vector<RenderTileLayer> terrain_layers;
     std::vector<RenderUnit> units;
     std::vector<ProjectedUnit> projected_units;
+    std::vector<RenderDebugQuad> debug_quads;
     std::string overlay_text;
 };

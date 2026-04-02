@@ -56,6 +56,7 @@ private:
     bool running_ = false;
     bool initialized_ = false;
     bool submitted_demo_prompt_ = false;
+    bool show_collision_debug_ = true;
     AtlasAsset scene_atlas_;
     LoadedImage scene_atlas_image_;
     std::string last_ai_status_;

@@ -30,21 +30,28 @@ vec3 fallback_color(uint spriteIndex) {
 
 void main() {
     vec4 atlasColor = texture(uSceneAtlas, vAtlasUv);
-
-    vec2 fogUv = clamp(
-        (vWorldPos + scene.fogSize * 0.5) / max(scene.fogSize, vec2(1.0)),
-        vec2(0.0),
-        vec2(1.0)
-    );
-    float fogValue = texture(uFogMask, fogUv).r;
-
     vec3 color = atlasColor.rgb;
+    float alpha = atlasColor.a * clamp(vOpacity, 0.0, 1.0);
+
+    if ((vFlags & 2u) != 0u) {
+        color = vec3(1.0, 0.2, 0.2);
+        alpha = clamp(vOpacity, 0.0, 1.0);
+    }
+
     if ((vFlags & 1u) != 0u) {
         float highlight = smoothstep(0.15, 0.85, 1.0 - distance(vUv, vec2(0.5)));
         color = mix(color, vec3(1.0, 0.9, 0.2), 0.35 * highlight);
     }
 
-    color *= mix(0.85, 1.0, fogValue);
-    float alpha = atlasColor.a * clamp(vOpacity, 0.0, 1.0);
+    if ((vFlags & 4u) == 0u) {
+        vec2 fogUv = clamp(
+            (vWorldPos + scene.fogSize * 0.5) / max(scene.fogSize, vec2(1.0)),
+            vec2(0.0),
+            vec2(1.0)
+        );
+        float fogValue = texture(uFogMask, fogUv).r;
+        color *= mix(0.85, 1.0, fogValue);
+    }
+
     outColor = vec4(color, alpha);
 }

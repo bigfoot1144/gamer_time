@@ -83,6 +83,10 @@ void Application::tick_frame(float dt_seconds) {
         scene_renderer_.request_resize();
     }
 
+    if (input.toggle_collision_debug_pressed) {
+        show_collision_debug_ = !show_collision_debug_;
+    }
+
     camera_controller_.update(input, dt_seconds);
     selection_system_.update(world_, input, camera_controller_.state());
 
@@ -102,6 +106,7 @@ void Application::tick_frame(float dt_seconds) {
     RenderWorld render_world = render_extractor_.build(
         world_,
         camera_controller_.state(),
+        show_collision_debug_,
         recent_ai_events_,
         build_overlay_text()
     );
@@ -154,11 +159,14 @@ std::string Application::build_overlay_text() const {
     const CameraState & camera = camera_controller_.state();
 
     overlay << "GAMER_TIME RTS FRAMEWORK\n";
-    overlay << "ESC quit | SPACE rerun prompt | click select | right click move | WASD/Arrows pan | wheel zoom\n\n";
+    overlay << "ESC quit | SPACE rerun prompt | F3 collision debug | click select | right click move | WASD/Arrows pan | wheel zoom\n\n";
+    overlay << "Map size: " << world_.map().width() << "x" << world_.map().height() << " tiles\n";
     overlay << "Units: " << world_.unit_count() << '\n';
     overlay << "Tile layers: " << world_.map().tile_layers().size() << '\n';
+    overlay << "Object layers: " << world_.map().object_layers().size() << '\n';
     overlay << "Terrain tiles: " << world_.map().total_tile_count() << '\n';
-    overlay << "Collision polygons: " << world_.map().collision_polygons().size() << '\n';
+    overlay << "Collision polygons: " << world_.collision().polygon_count() << '\n';
+    overlay << "Collision debug: " << (show_collision_debug_ ? "on" : "off") << '\n';
     overlay << "Selected: " << world_.selected_units().size() << '\n';
     overlay << "Camera: (" << static_cast<int>(camera.world_center.x) << ", " << static_cast<int>(camera.world_center.y) << ") zoom " << camera.zoom << "\n";
     overlay << "Fog cells visible: " << std::count(world_.fog_mask().begin(), world_.fog_mask().end(), static_cast<std::uint8_t>(255)) << "\n";

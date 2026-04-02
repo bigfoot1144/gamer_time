@@ -389,7 +389,7 @@ void SceneRenderer::create_graphics_pipeline() {
     binding_descriptions[1].stride = sizeof(InstanceData);
     binding_descriptions[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 
-    std::array<VkVertexInputAttributeDescription, 7> attribute_descriptions{};
+    std::array<VkVertexInputAttributeDescription, 8> attribute_descriptions{};
     attribute_descriptions[0] = {0, 0, VK_FORMAT_R32G32_SFLOAT, 0};
     attribute_descriptions[1] = {1, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 2};
     attribute_descriptions[2] = {2, 1, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(InstanceData, world_pos))};
@@ -397,6 +397,7 @@ void SceneRenderer::create_graphics_pipeline() {
     attribute_descriptions[4] = {4, 1, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(InstanceData, sprite_index))};
     attribute_descriptions[5] = {5, 1, VK_FORMAT_R32_UINT, static_cast<uint32_t>(offsetof(InstanceData, flags))};
     attribute_descriptions[6] = {6, 1, VK_FORMAT_R32_SFLOAT, static_cast<uint32_t>(offsetof(InstanceData, opacity))};
+    attribute_descriptions[7] = {7, 1, VK_FORMAT_R32_SFLOAT, static_cast<uint32_t>(offsetof(InstanceData, rotation_radians))};
 
     vertex_input_info.vertexBindingDescriptionCount = 2;
     vertex_input_info.pVertexBindingDescriptions = binding_descriptions;
@@ -638,6 +639,9 @@ void SceneRenderer::record_command_buffer(VkCommandBuffer command_buffer, uint32
     }
     if (batch_.unit_instance_count > 0) {
         vkCmdDrawIndexed(command_buffer, 6, batch_.unit_instance_count, 0, 0, static_cast<int32_t>(batch_.unit_instance_offset));
+    }
+    if (batch_.debug_instance_count > 0) {
+        vkCmdDrawIndexed(command_buffer, 6, batch_.debug_instance_count, 0, 0, static_cast<int32_t>(batch_.debug_instance_offset));
     }
 
     text_overlay_.record(command_buffer);
